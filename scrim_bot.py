@@ -50,7 +50,7 @@ SERVER_OPTIONS = ["Frankfurt", "London", "Amsterdam", "Paris", "Warsaw", "Stockh
                   "Texas", "Oregon", "California"]
 
 # Format options
-FORMAT_OPTIONS = ["1 Game", "2 Games", "1 Game MR24", "2 Games MR24", "Best of 1", "Best of 3", "Best of 5"]
+FORMAT_OPTIONS = ["1 Game MR24", "2 Games MR24", "Best of 1", "Best of 3", "Best of 5"]
 
 # Temporary storage (in real projects you'd use a DB)
 scrim_data: Dict[int, Dict[str, Union[str, List[str]]]] = {}
@@ -61,7 +61,7 @@ scheduled_reminders = {}
 
 # Channel ID where the persistent button message will be posted
 # Change this to the channel where you want the button to appear
-BUTTON_CHANNEL_ID = 1366433672093237310  # Example: using EMEA channel ID
+BUTTON_CHANNEL_ID = 1354698542173786344  # Example: using EMEA channel ID
 
 
 # New function to schedule a reminder task
@@ -231,13 +231,16 @@ async def create_scrim_button(interaction: discord.Interaction):
         await interaction.response.send_message(embed=embed, ephemeral=True)
         return
 
+    # First acknowledge the interaction to prevent timeout
+    await interaction.response.defer(ephemeral=True)
+    
     # Create embed for the button message
     embed = discord.Embed(
         title="📆 Schedule a Scrim",
         description="Click the button below to start scheduling a scrim for your team.",
         color=discord.Color.blue()
     )
-
+    
     # Add information about who can use the button
     embed.add_field(
         name="Permissions",
@@ -248,9 +251,9 @@ async def create_scrim_button(interaction: discord.Interaction):
     # Create and send the persistent button
     view = PersistentScrimButton()
     await interaction.channel.send(embed=embed, view=view)
-
-    # Confirm to the admin that the button was created
-    await interaction.response.send_message("✅ Persistent scrim button created successfully!", ephemeral=True)
+    
+    # Confirm to the admin that the button was created (using followup since we deferred)
+    await interaction.followup.send("✅ Persistent scrim button created successfully!", ephemeral=True)
 
 
 # Team Selection View with Buttons
@@ -698,12 +701,12 @@ async def on_ready():
         synced = await bot.tree.sync()
         print(f"Synced {len(synced)} command(s)")
         print(f"Logged in as {bot.user}")
-
+        
         # Setup the persistent view when the bot starts
         # This allows the button to work even after bot restarts
         bot.add_view(PersistentScrimButton())
         print("Added persistent button view")
-
+        
         # Optional: You can make the bot automatically post the button when it starts
         # Uncomment the following code to enable this feature:
         """
@@ -714,7 +717,7 @@ async def on_ready():
             # in a database to check more accurately
             messages = [message async for message in channel.history(limit=20)]
             button_exists = any("📆 Schedule a Scrim" in message.content for message in messages)
-
+            
             if not button_exists:
                 embed = discord.Embed(
                     title="📆 Schedule a Scrim",
@@ -729,7 +732,7 @@ async def on_ready():
                 await channel.send(embed=embed, view=PersistentScrimButton())
                 print("Created persistent button message")
         """
-
+        
     except Exception as e:
         print(f"Error during startup: {e}")
 
