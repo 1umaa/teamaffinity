@@ -62,7 +62,7 @@ class TeamSelect(discord.ui.View):
         await interaction.response.send_modal(ScrimModalStep1())
 
 class ScrimModalStep1(discord.ui.Modal, title="Scrim Setup: Step 1 - Date and Time"):
-    scrim_date = discord.ui.TextInput(label="Scrim Date (YYYY-MM-DD)", placeholder="2025-05-01")
+    scrim_date = discord.ui.TextInput(label="Scrim Date (DD-MM-YYYY)", placeholder="01-05-2025")
     scrim_time = discord.ui.TextInput(label="Scrim Time (HH:MM 24h format)", placeholder="19:00")
 
     async def on_submit(self, interaction: discord.Interaction):
@@ -112,7 +112,7 @@ class ScrimModalStep5(discord.ui.Modal, title="Scrim Setup: Step 5 - Players"):
 def generate_preview_embed(user_id):
     data = scrim_data[user_id]
     date_time_str = f"{data['date']} {data['time']}"
-    date_time_obj = datetime.datetime.strptime(date_time_str, "%Y-%m-%d %H:%M")
+    date_time_obj = datetime.datetime.strptime(date_time_str, "%d-%m-%Y %H:%M")
     unix_timestamp = int(time.mktime(date_time_obj.timetuple()))
     players_formatted = '\n'.join(f"- {player}" for player in data['players'].split())
 
