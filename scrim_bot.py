@@ -13,17 +13,25 @@ bot = commands.Bot(command_prefix="/", intents=intents)
 
 # Team channel and role IDs
 TEAM_CHANNELS = {
-    "Affinity EMEA 🇪🇺": 1354698542173786344,
-    "Affinity Academy 🇪🇺": 1366431756164665496,
-    "Affinity Auras 🇪🇺": 1366432079440515154,
-    "Affinity NA 🇺🇸": 1354508442135560323
+    "Affinity EMEA": 1354698542173786344,
+    "Affinity Academy": 1366431756164665496,
+    "Affinity Auras": 1366432079440515154,
+    "Affinity NA": 1354508442135560323
+}
+
+# Define specific colors for each team channel using hexcodes
+TEAM_COLORS = {
+    "Affinity EMEA": discord.Color(0x12d6df),    # #12d6df - EMEA Blue
+    "Affinity Academy": discord.Color(0xf70fff), # #f70fff - ACAD Purple
+    "Affinity Auras": discord.Color(0xff8cfb),   # #ff8cfb - Auras Pink
+    "Affinity NA": discord.Color(0xcb0000)       # #cb0000 - NA Red
 }
 
 TEAM_ROLES = {
-    "Affinity EMEA 🇪🇺": 1354084830140436611,
-    "Affinity Academy 🇪🇺": 1354085016778575934,
-    "Affinity Auras 🇪🇺": 1354085121166278708,
-    "Affinity NA 🇺🇸": 1354085225600385044
+    "Affinity EMEA": 1354084830140436611,
+    "Affinity Academy": 1354085016778575934,
+    "Affinity Auras": 1354085121166278708,
+    "Affinity NA": 1354085225600385044
 }
 
 ALLOWED_ROLES = [
@@ -34,19 +42,17 @@ ALLOWED_ROLES = [
 ]
 
 # Maps selection options
-MAP_OPTIONS = ["Ascent", "Bind", "Haven", "Split", "Icebox", "Breeze", "Fracture", "Pearl", "Lotus", "Sunset"]
+MAP_OPTIONS = ["Abyss", "Ascent", "Bind", "Breeze", "Fracture", "Haven", "Icebox", "Lotus", "Pearl", "Split", "Sunset"]
 
 # Server options
 SERVER_OPTIONS = ["Frankfurt", "London", "Amsterdam", "Paris", "Warsaw", "Stockholm", "Madrid", "Virginia", "Illinois",
-                  "Texas", "Oregon", "California", "Sydney", "Tokyo", "Singapore", "Hong Kong", "Mumbai", "Bahrain",
-                  "São Paulo", "Santiago"]
+                  "Texas", "Oregon", "California"]
 
 # Format options
-FORMAT_OPTIONS = ["Best of 1", "Best of 3", "Best of 5"]
+FORMAT_OPTIONS = ["1 Game MR24", "2 Games MR24", "Best of 1", "Best of 3", "Best of 5"]
 
 # Temporary storage (in real projects you'd use a DB)
 scrim_data: Dict[int, Dict[str, Union[str, List[str]]]] = {}
-
 
 # Command to Start the Scrim Scheduling
 @bot.tree.command(name="scrim", description="Start a scrim announcement!")
@@ -80,21 +86,21 @@ class TeamSelectionView(discord.ui.View):
         super().__init__(timeout=300)
         self.user_id = user_id
 
-    @discord.ui.button(label="Affinity EMEA 🇪🇺", style=discord.ButtonStyle.primary)
+    @discord.ui.button(label="Affinity EMEA", style=discord.ButtonStyle.primary)
     async def select_emea(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await self.select_team(interaction, "Affinity EMEA 🇪🇺")
+        await self.select_team(interaction, "Affinity EMEA")
 
-    @discord.ui.button(label="Affinity Academy 🇪🇺", style=discord.ButtonStyle.primary)
+    @discord.ui.button(label="Affinity Academy", style=discord.ButtonStyle.primary)
     async def select_academy(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await self.select_team(interaction, "Affinity Academy 🇪🇺")
+        await self.select_team(interaction, "Affinity Academy")
 
-    @discord.ui.button(label="Affinity Auras 🇪🇺", style=discord.ButtonStyle.primary)
+    @discord.ui.button(label="Affinity Auras", style=discord.ButtonStyle.primary)
     async def select_auras(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await self.select_team(interaction, "Affinity Auras 🇪🇺")
+        await self.select_team(interaction, "Affinity Auras")
 
-    @discord.ui.button(label="Affinity NA 🇺🇸", style=discord.ButtonStyle.primary)
+    @discord.ui.button(label="Affinity NA", style=discord.ButtonStyle.primary)
     async def select_na(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await self.select_team(interaction, "Affinity NA 🇺🇸")
+        await self.select_team(interaction, "Affinity NA")
 
     async def select_team(self, interaction: discord.Interaction, team: str):
         scrim_data[self.user_id]["team"] = team
@@ -413,6 +419,7 @@ class ConfirmationView(discord.ui.View):
 # Generate preview embed for the scrim
 def generate_preview_embed(user_id: int) -> discord.Embed:
     data = scrim_data[user_id]
+    team = data["team"]
 
     # Format date and time
     date_time_str = f"{data['date']} {data['time']}"
@@ -433,15 +440,18 @@ def generate_preview_embed(user_id: int) -> discord.Embed:
     else:
         maps_text = str(maps_value)
 
-    # Create embed
+    # Get the team color from the TEAM_COLORS dictionary
+    color = TEAM_COLORS.get(team, discord.Color(0x3498DB))  # Default to a nice blue if team not found
+
+    # Create embed with team-specific color
     embed = discord.Embed(
-        title=f"🛡️ {data['team']} Scrim Scheduled",
-        color=discord.Color.blue()
+        title=f"🛡️ {team} Scrim Scheduled",
+        color=color
     )
 
     embed.add_field(name="📅 Date & Time", value=f"<t:{unix_timestamp}:F>", inline=False)
-    embed.add_field(name="🏴 Opponent", value=data["opponent_team"], inline=True)
-    embed.add_field(name="🎯 Opponent Rank", value=data["opponent_rank"], inline=True)
+    embed.add_field(name="🏴 Opponent", value=data["opponent_team"], inline=False)
+    embed.add_field(name="🎯 Opponent Rank", value=data["opponent_rank"], inline=False)
     embed.add_field(name="📖 Format", value=data["format"], inline=False)
     embed.add_field(name="🗺️ Maps", value=maps_text, inline=False)
     embed.add_field(name="🌍 Server", value=data["server"], inline=False)
