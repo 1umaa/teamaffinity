@@ -41,7 +41,9 @@ scheduled_scrims = []
 
 class PersistentPanel(discord.ui.View):
     def __init__(self):
-        super().__init__(timeout=None)
+        super().__init__(timeout=300)  # Increased timeout to 5 minutes
+        self.clear_items()  # Ensure we reset the view each time
+        self.add_item(TeamDropdown())
 
     @discord.ui.button(label="➕ Schedule Scrim", style=discord.ButtonStyle.success)
     async def schedule_scrim(self, interaction: discord.Interaction, button: discord.ui.Button):
@@ -49,7 +51,8 @@ class PersistentPanel(discord.ui.View):
 
 class TeamSelect(discord.ui.View):
     def __init__(self):
-        super().__init__()
+        super().__init__(timeout=None)  # Keep timeout None for persistence
+        self.clear_items()  # Clear any previously added items
         self.add_item(TeamDropdown())
 
 class TeamDropdown(discord.ui.Select):
