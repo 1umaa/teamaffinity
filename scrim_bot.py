@@ -51,7 +51,7 @@ class TeamSelect(discord.ui.View):
     def __init__(self):
         super().__init__()
         self.add_item(TeamDropdown())
-
+        
 class TeamDropdown(discord.ui.Select):
     def __init__(self):
         options = [
@@ -65,7 +65,9 @@ class TeamDropdown(discord.ui.Select):
     async def callback(self, interaction: discord.Interaction):
         user_id = interaction.user.id
         scrim_data[user_id] = {"team": self.values[0]}
-        await interaction.response.send_modal(ScrimModalStep1())
+
+        await interaction.response.defer(thinking=True)  # <-- important to defer first
+        await interaction.followup.send_modal(ScrimModalStep1())  # <-- open modal after defer
 
 class ScrimModalStep1(discord.ui.Modal, title="Scrim Setup: Step 1 - Date and Time"):
     scrim_date = discord.ui.TextInput(label="Scrim Date (DD-MM-YYYY)", placeholder="01-05-2025")
