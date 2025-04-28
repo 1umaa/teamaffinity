@@ -59,19 +59,140 @@ scrim_data: Dict[int, Dict[str, Union[str, List[str]]]] = {}
 # Key: unique ID for the scrim, Value: the associated task
 scheduled_reminders = {}
 
-PANEL_CHANNEL_ID = 1366433672093237310  # Replace with your actual channel ID
-PANEL_MESSAGE_ID = None  # We'll track the last sent message to update it
 
-# Persistent Panel with Button
-class PersistentPanel(discord.ui.View):
-    def __init__(self):
-        super().__init__(timeout=None)  # Make the view persistent (no timeout)
+# New function to schedule a reminder task
+async def schedule_reminder(team: str, opponent_team: str, date_time_obj: datetime.datetime,
+                            channel_id: int, role_id: int, players: List[str]):
+    """
+    Schedule a reminder 30 minutes before a scrim starts.
 
-    @discord.ui.button(label="➕ Schedule Scrim", style=discord.ButtonStyle.success)
-    async def schedule_scrim(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await interaction.response.send_message("Select your team:", view=TeamSelectionView(interaction.user.id), ephemeral=True)
+    Args:
+        team: The team name (e.g., "Affinity EMEA")
+        opponent_team: The opposing team name
+        date_time_obj: The datetime object for when the scrim starts
+        channel_id: The channel ID where to send the reminder
+        role_id: The role ID to ping with the reminder
+        players: List of player mentions
+    """
+    # Calculate reminder time (30 minutes before scrim)
+    reminder_time = date_time_obj - datetime.timedelta(minutes=30)
 
-# Team Selection View
+    # Calculate seconds to wait until reminder should be sent
+    now = datetime.datetime.now()
+    seconds_until_reminder = (reminder_time - now).total_seconds()
+
+    # Only schedule if the reminder time is in the future
+    if seconds_until_reminder <= 0:
+        print(f"Not scheduling reminder for {team} vs {opponent_team} as the reminder time has already passed")
+        return
+
+    # Create a unique ID for this scrim reminder
+    scrim_id = f"{team}-{opponent_team}-{date_time_obj.timestamp()}"
+
+    # Cancel any existing reminder with the same ID
+    if scrim_id in scheduled_reminders and not scheduled_reminders[scrim_id].done():
+        scheduled_reminders[scrim_id].cancel()
+
+    # Schedule the reminder task
+    task = asyncio.create_task(
+        send_reminder_after_delay(seconds_until_reminder, team, opponent_team,
+                                  date_time_obj, channel_id, role_id, players)
+    )
+
+    # Store the task reference
+    scheduled_reminders[scrim_id] = task
+
+    print(f"✅ Scheduled reminder for {team} vs {opponent_team} at {reminder_time}")
+
+
+async def send_reminder_after_delay(delay_seconds: float, team: str, opponent_team: str,
+                                    date_time_obj: datetime.datetime, channel_id: int,
+                                    role_id: int, players: List[str]):
+    """
+    Wait for the specified delay and then send a reminder message.
+
+    Args:
+        delay_seconds: Seconds to wait before sending the reminder
+        team: The team name
+        opponent_team: The opposing team name
+        date_time_obj: The datetime object for when the scrim starts
+        channel_id: The channel ID where to send the reminder
+        role_id: The role ID to ping with the reminder
+        players: List of player mentions
+    """
+    try:
+        # Wait until it's time to send the reminder
+        await asyncio.sleep(delay_seconds)
+
+        # Get the channel
+        channel = bot.get_channel(channel_id)
+        if not channel:
+            print(f"Error: Could not find channel with ID {channel_id} for reminder")
+            return
+
+        # Format the start time for the reminder
+        start_time = date_time_obj.strftime('%H:%M')
+
+        # Create player pings if any are specified
+        player_pings = "\n".join(players) if players else "Team members"
+
+        # Create the reminder message with role ping
+        reminder_message = (
+            f"🔔 **REMINDER** 🔔\n"
+            f"<@&{role_id}>\n\n"
+            f"Your scrim against **{opponent_team}** starts in 30 minutes at **{start_time}**!\n\n"
+            f"**Players:**\n{player_pings}\n\n"
+            f"Please be ready and in voice channels."
+        )
+
+        # Get the team color for the embed
+        color = TEAM_COLORS.get(team, discord.Color(0x3498DB))
+
+        # Create an embed for the reminder
+        embed = discord.Embed(
+            title=f"⏰ {team} Scrim Reminder",
+            description=reminder_message,
+            color=color
+        )
+
+        # Send the reminder
+        await channel.send(content=f"<@&{role_id}> **30-MINUTE SCRIM REMINDER**", embed=embed)
+        print(f"Sent reminder for {team} vs {opponent_team}")
+
+    except asyncio.CancelledError:
+        # Handle if the task is cancelled
+        print(f"Reminder for {team} vs {opponent_team} was cancelled")
+    except Exception as e:
+        print(f"Error sending reminder: {e}")
+
+
+# Command to Start the Scrim Scheduling
+@bot.tree.command(name="scrim", description="Start a scrim announcement!")
+async def scrim(interaction: discord.Interaction):
+    # Check for permissions
+    if not any(role.id in ALLOWED_ROLES for role in interaction.user.roles):
+        embed = discord.Embed(
+            title="❌ Access Denied",
+            description="You do not have permission to schedule scrims.",
+            color=discord.Color.red()
+        )
+        await interaction.response.send_message(embed=embed, ephemeral=True)
+        return
+
+    # Initialize user data
+    user_id = interaction.user.id
+    scrim_data[user_id] = {}
+
+    # Prompt for Team Selection
+    view = TeamSelectionView(user_id)
+    await interaction.response.send_message(
+        "Please select your team:",
+        view=view,
+        ephemeral=True
+    )
+
+
+# Team Selection View with Buttons
 class TeamSelectionView(discord.ui.View):
     def __init__(self, user_id: int):
         super().__init__(timeout=300)
@@ -95,10 +216,22 @@ class TeamSelectionView(discord.ui.View):
 
     async def select_team(self, interaction: discord.Interaction, team: str):
         scrim_data[self.user_id]["team"] = team
+
+        # After team selection, show the date/time modal
         await interaction.response.send_modal(ScrimDateTimeModal(self.user_id))
 
-# Date and Time Modal (for team scheduling)
+    async def on_timeout(self):
+        # Clean up on timeout
+        if self.user_id in scrim_data:
+            del scrim_data[self.user_id]
+
+
+# Date and Time Modal
 class ScrimDateTimeModal(discord.ui.Modal, title="Scrim Date and Time"):
+    def __init__(self, user_id: int):
+        super().__init__()
+        self.user_id = user_id
+
     date_input = discord.ui.TextInput(
         label="Date (DD-MM-YYYY)",
         placeholder="e.g., 30-04-2025",
@@ -106,6 +239,7 @@ class ScrimDateTimeModal(discord.ui.Modal, title="Scrim Date and Time"):
         min_length=10,
         max_length=10
     )
+
     time_input = discord.ui.TextInput(
         label="Time (HH:MM 24h format)",
         placeholder="e.g., 19:30",
@@ -115,15 +249,33 @@ class ScrimDateTimeModal(discord.ui.Modal, title="Scrim Date and Time"):
     )
 
     async def on_submit(self, interaction: discord.Interaction):
-        scrim_data[self.user_id]["date"] = self.date_input.value
-        scrim_data[self.user_id]["time"] = self.time_input.value
-        await interaction.response.send_message(
-            "Now, please enter opponent details:",
-            view=OpponentDetailsView(self.user_id),
-            ephemeral=True
-        )
+        # Validate date and time format
+        try:
+            date_str = self.date_input.value
+            time_str = self.time_input.value
+            date_time_str = f"{date_str} {time_str}"
+            date_time_obj = datetime.datetime.strptime(date_time_str, "%d-%m-%Y %H:%M")
 
-# Opponent Details Modal
+            # Store in scrim data
+            scrim_data[self.user_id]["date"] = date_str
+            scrim_data[self.user_id]["time"] = time_str
+            scrim_data[self.user_id][
+                "date_time_obj"] = date_time_obj  # Store the datetime object for reminder scheduling
+
+            # Continue to opponent details
+            await interaction.response.send_message(
+                "Now, let's get details about the opponent:",
+                view=OpponentDetailsView(self.user_id),
+                ephemeral=True
+            )
+        except ValueError:
+            await interaction.response.send_message(
+                "❌ Invalid date or time format. Please use DD-MM-YYYY for date and HH:MM for time.",
+                ephemeral=True
+            )
+
+
+# Opponent Details View
 class OpponentDetailsView(discord.ui.View):
     def __init__(self, user_id: int):
         super().__init__(timeout=300)
@@ -133,13 +285,23 @@ class OpponentDetailsView(discord.ui.View):
     async def opponent_details(self, interaction: discord.Interaction, button: discord.ui.Button):
         await interaction.response.send_modal(OpponentDetailsModal(self.user_id))
 
+    async def on_timeout(self):
+        if self.user_id in scrim_data:
+            del scrim_data[self.user_id]
+
+
 # Opponent Details Modal
 class OpponentDetailsModal(discord.ui.Modal, title="Opponent Details"):
+    def __init__(self, user_id: int):
+        super().__init__()
+        self.user_id = user_id
+
     opponent_team = discord.ui.TextInput(
         label="Opponent Team Name",
         placeholder="e.g., Team Liquid",
         required=True
     )
+
     opponent_rank = discord.ui.TextInput(
         label="Opponent's Average Rank",
         placeholder="e.g., Immortal 2",
@@ -147,13 +309,17 @@ class OpponentDetailsModal(discord.ui.Modal, title="Opponent Details"):
     )
 
     async def on_submit(self, interaction: discord.Interaction):
+        # Store opponent details
         scrim_data[self.user_id]["opponent_team"] = self.opponent_team.value
         scrim_data[self.user_id]["opponent_rank"] = self.opponent_rank.value
+
+        # Continue to format selection
         await interaction.response.send_message(
             "Please select the match format:",
             view=FormatSelectionView(self.user_id),
             ephemeral=True
         )
+
 
 # Format Selection View
 class FormatSelectionView(discord.ui.View):
@@ -161,11 +327,13 @@ class FormatSelectionView(discord.ui.View):
         super().__init__(timeout=300)
         self.user_id = user_id
 
+        # Add format selector
         self.add_item(FormatSelector(user_id))
 
     async def on_timeout(self):
         if self.user_id in scrim_data:
             del scrim_data[self.user_id]
+
 
 # Format Selector Dropdown
 class FormatSelector(discord.ui.Select):
@@ -185,30 +353,36 @@ class FormatSelector(discord.ui.Select):
         )
 
     async def callback(self, interaction: discord.Interaction):
+        # Store format selection
         selected_format = self.values[0]
         scrim_data[self.user_id]["format"] = selected_format
 
+        # Continue to maps selection
         await interaction.response.send_message(
             "Please select the maps to be played:",
             view=MapSelectionView(self.user_id),
             ephemeral=True
         )
 
-# Map Selection View
+
+# Maps Selection View
 class MapSelectionView(discord.ui.View):
     def __init__(self, user_id: int):
         super().__init__(timeout=300)
         self.user_id = user_id
 
-        self.add_item(MapSelector(user_id))
+        # Add maps selector
+        max_maps = 5  # Allow up to 5 maps to be selected
+        self.add_item(MapSelector(user_id, max_maps))
 
     async def on_timeout(self):
         if self.user_id in scrim_data:
             del scrim_data[self.user_id]
 
-# Map Selector Dropdown
+
+# Maps Selector Dropdown
 class MapSelector(discord.ui.Select):
-    def __init__(self, user_id: int):
+    def __init__(self, user_id: int, max_maps: int):
         self.user_id = user_id
 
         options = [
@@ -219,19 +393,22 @@ class MapSelector(discord.ui.Select):
         super().__init__(
             placeholder="Select maps...",
             min_values=1,
-            max_values=5,
+            max_values=max_maps,
             options=options
         )
 
     async def callback(self, interaction: discord.Interaction):
+        # Store maps selection
         selected_maps = self.values
         scrim_data[self.user_id]["maps"] = selected_maps
 
+        # Continue to server selection
         await interaction.response.send_message(
             "Please select the server:",
             view=ServerSelectionView(self.user_id),
             ephemeral=True
         )
+
 
 # Server Selection View
 class ServerSelectionView(discord.ui.View):
@@ -239,11 +416,13 @@ class ServerSelectionView(discord.ui.View):
         super().__init__(timeout=300)
         self.user_id = user_id
 
+        # Add server selector
         self.add_item(ServerSelector(user_id))
 
     async def on_timeout(self):
         if self.user_id in scrim_data:
             del scrim_data[self.user_id]
+
 
 # Server Selector Dropdown
 class ServerSelector(discord.ui.Select):
@@ -263,14 +442,17 @@ class ServerSelector(discord.ui.Select):
         )
 
     async def callback(self, interaction: discord.Interaction):
+        # Store server selection
         selected_server = self.values[0]
         scrim_data[self.user_id]["server"] = selected_server
 
+        # Continue to player selection
         await interaction.response.send_message(
             "Please enter the players:",
             view=PlayerSelectionView(self.user_id),
             ephemeral=True
         )
+
 
 # Player Selection View
 class PlayerSelectionView(discord.ui.View):
@@ -286,6 +468,7 @@ class PlayerSelectionView(discord.ui.View):
         if self.user_id in scrim_data:
             del scrim_data[self.user_id]
 
+
 # Player Selection Modal
 class PlayerSelectionModal(discord.ui.Modal, title="Player Selection"):
     def __init__(self, user_id: int):
@@ -300,9 +483,11 @@ class PlayerSelectionModal(discord.ui.Modal, title="Player Selection"):
     )
 
     async def on_submit(self, interaction: discord.Interaction):
+        # Process player input - split by newlines for proper handling
         players = self.players_input.value.strip().split('\n')
         scrim_data[self.user_id]["players"] = players
 
+        # Show preview and confirmation
         embed = generate_preview_embed(self.user_id)
 
         await interaction.response.send_message(
@@ -312,6 +497,7 @@ class PlayerSelectionModal(discord.ui.Modal, title="Player Selection"):
             ephemeral=True
         )
 
+
 # Confirmation View
 class ConfirmationView(discord.ui.View):
     def __init__(self, user_id: int):
@@ -320,6 +506,7 @@ class ConfirmationView(discord.ui.View):
 
     @discord.ui.button(label="Confirm & Send", style=discord.ButtonStyle.success)
     async def confirm(self, interaction: discord.Interaction, button: discord.ui.Button):
+        # Send the announcement to the appropriate channel
         await send_scrim_announcement(self.user_id, interaction)
 
         await interaction.response.send_message(
@@ -329,6 +516,7 @@ class ConfirmationView(discord.ui.View):
 
     @discord.ui.button(label="Cancel", style=discord.ButtonStyle.danger)
     async def cancel(self, interaction: discord.Interaction, button: discord.ui.Button):
+        # Clean up data
         if self.user_id in scrim_data:
             del scrim_data[self.user_id]
 
@@ -341,28 +529,35 @@ class ConfirmationView(discord.ui.View):
         if self.user_id in scrim_data:
             del scrim_data[self.user_id]
 
+
 # Generate preview embed for the scrim
 def generate_preview_embed(user_id: int) -> discord.Embed:
     data = scrim_data[user_id]
     team = data["team"]
 
+    # Format date and time
     date_time_str = f"{data['date']} {data['time']}"
     try:
         date_time_obj = datetime.datetime.strptime(date_time_str, "%d-%m-%Y %H:%M")
         unix_timestamp = int(date_time_obj.timestamp())
     except ValueError:
+        # Fallback in case of format issues
         unix_timestamp = int(datetime.datetime.now().timestamp())
 
+    # Format players list
     players_formatted = '\n'.join(f"- {player}" for player in data['players'])
 
+    # Format maps list if it's a list
     maps_value = data.get("maps", [])
     if isinstance(maps_value, list):
         maps_text = '\n'.join(f"- {map_name}" for map_name in maps_value)
     else:
         maps_text = str(maps_value)
 
-    color = TEAM_COLORS.get(team, discord.Color(0x3498DB)) 
+    # Get the team color from the TEAM_COLORS dictionary
+    color = TEAM_COLORS.get(team, discord.Color(0x3498DB))  # Default to a nice blue if team not found
 
+    # Create embed with team-specific color
     embed = discord.Embed(
         title=f"🛡️ {team} Scrim Scheduled",
         color=color
@@ -375,15 +570,20 @@ def generate_preview_embed(user_id: int) -> discord.Embed:
     embed.add_field(name="🗺️ Maps", value=maps_text, inline=False)
     embed.add_field(name="🌍 Server", value=data["server"], inline=False)
     embed.add_field(name="👥 Players", value=players_formatted, inline=False)
-    embed.add_field(name="⏰ Reminder", value="A reminder will be sent 30 minutes before the scrim starts.", inline=False)
+
+    # Add reminder note
+    embed.add_field(name="⏰ Reminder", value="A reminder will be sent 30 minutes before the scrim starts.",
+                    inline=False)
 
     return embed
+
 
 # Send scrim announcement to the proper channel
 async def send_scrim_announcement(user_id: int, interaction: discord.Interaction) -> None:
     data = scrim_data[user_id]
     team = data["team"]
 
+    # Get channel and role IDs
     channel_id = TEAM_CHANNELS.get(team)
     role_id = TEAM_ROLES.get(team)
 
@@ -394,8 +594,10 @@ async def send_scrim_announcement(user_id: int, interaction: discord.Interaction
         )
         return
 
+    # Generate embed
     embed = generate_preview_embed(user_id)
 
+    # Get the channel
     channel = bot.get_channel(channel_id)
     if not channel:
         await interaction.followup.send(
@@ -404,11 +606,14 @@ async def send_scrim_announcement(user_id: int, interaction: discord.Interaction
         )
         return
 
+    # Include role ping in the message content
     content = (f"# <@&{role_id}> Scrim scheduled! "
                f"Please review the below and reach out to your Team Captain if you won't be available, so that we can find a substitute")
 
+    # Send the announcement
     await channel.send(content=content, embed=embed)
 
+    # Schedule the reminder for 30 minutes before the scrim starts
     date_time_obj = data.get("date_time_obj")
     if date_time_obj:
         await schedule_reminder(
@@ -420,42 +625,20 @@ async def send_scrim_announcement(user_id: int, interaction: discord.Interaction
             players=data["players"]
         )
 
+    # Clean up user data
     del scrim_data[user_id]
+
 
 # Ready Event
 @bot.event
 async def on_ready():
     try:
-        synced = await bot.tree.sync()
+        synced = await bot.tree.sync()  # Sync all slash commands with Discord
         print(f"Synced {len(synced)} command(s)")
         print(f"Logged in as {bot.user}")
     except Exception as e:
         print(f"Error syncing commands: {e}")
 
-    await setup_persistent_button()
-
-# Set up persistent button in the specified channel
-async def setup_persistent_button():
-    global PANEL_MESSAGE_ID
-    channel = bot.get_channel(PANEL_CHANNEL_ID)
-
-    if not channel:
-        print(f"Error: Channel with ID {PANEL_CHANNEL_ID} not found.")
-        return
-
-    if PANEL_MESSAGE_ID:
-        try:
-            message = await channel.fetch_message(PANEL_MESSAGE_ID)
-            await message.edit(content="➕ **Schedule a Scrim**", view=PersistentPanel())
-            print("Updated existing panel message!")
-        except (discord.NotFound, discord.HTTPException):
-            print("Previous panel message not found or could not edit. Sending new panel.")
-            message = await channel.send("➕ **Schedule a Scrim**", view=PersistentPanel())
-            PANEL_MESSAGE_ID = message.id
-    else:
-        message = await channel.send("➕ **Schedule a Scrim**", view=PersistentPanel())
-        PANEL_MESSAGE_ID = message.id
-        print("New panel message sent!")
 
 # --- Run Bot ---
 bot.run(os.getenv("DISCORD_TOKEN"))
