@@ -48,6 +48,22 @@ class PersistentPanel(discord.ui.View):
         await interaction.response.send_message("Select the team for this scrim:", view=TeamSelect(), ephemeral=True)
 
 class TeamSelect(discord.ui.View):
+    def __init__(self):
+        super().__init__()
+
+        self.add_item(discord.ui.Select(
+            placeholder="Select the team for this scrim",
+            min_values=1,
+            max_values=1,
+            options=[
+                discord.SelectOption(label="Affinity EMEA 🇪🇺"),
+                discord.SelectOption(label="Affinity Academy 🇪🇺"),
+                discord.SelectOption(label="Affinity Auras 🇪🇺"),
+                discord.SelectOption(label="Affinity NA 🇺🇸")
+            ],
+            custom_id="team_select"
+        ))
+
     @discord.ui.select(
         placeholder="Select the team for this scrim",
         min_values=1,
