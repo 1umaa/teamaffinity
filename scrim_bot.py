@@ -170,7 +170,7 @@ class TeamSelectionPanel(discord.ui.View):
         user_id = interaction.user.id
         scrim_data[user_id] = {"team": team}
         
-        # Defer interaction and open modal for scrim details
+        # Defer interaction and then open the modal
         await interaction.response.defer()  # Defer the interaction
         await interaction.response.send_modal(ScrimModal())  # Open modal correctly
 
