@@ -489,7 +489,8 @@ async def send_scrim_announcement(user_id: int, interaction: discord.Interaction
         return
 
     # Include role ping in the message content
-    content = f"<@&{role_id}> Scrim scheduled! Please confirm your availability."
+    content = (f"# <@&{role_id}> Scrim scheduled! "
+               f"Please review the below and reach out to your Team Captain if you won't be available, so that we can find a substitute")
 
     # Send the announcement
     await channel.send(content=content, embed=embed)
