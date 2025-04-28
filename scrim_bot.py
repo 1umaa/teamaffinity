@@ -233,14 +233,14 @@ async def create_scrim_button(interaction: discord.Interaction):
 
     # First acknowledge the interaction to prevent timeout
     await interaction.response.defer(ephemeral=True)
-    
+
     # Create embed for the button message
     embed = discord.Embed(
         title="📆 Schedule a Scrim",
         description="Click the button below to start scheduling a scrim for your team.",
         color=discord.Color.blue()
     )
-    
+
     # Add information about who can use the button
     embed.add_field(
         name="Permissions",
@@ -251,7 +251,7 @@ async def create_scrim_button(interaction: discord.Interaction):
     # Create and send the persistent button
     view = PersistentScrimButton()
     await interaction.channel.send(embed=embed, view=view)
-    
+
     # Confirm to the admin that the button was created (using followup since we deferred)
     await interaction.followup.send("✅ Persistent scrim button created successfully!", ephemeral=True)
 
@@ -670,8 +670,10 @@ async def send_scrim_announcement(user_id: int, interaction: discord.Interaction
         )
         return
 
-    # Include role ping in the message content
-    content = (f"# <@&{role_id}> Scrim scheduled! "
+    # Include role ping in the message content with a two-line format
+    # First line has the role mention, second line has the message
+    content = (f"# <@&{role_id}>\n"
+               f"\n"
                f"Please review the below and reach out to your Team Captain if you won't be available, so that we can find a substitute")
 
     # Send the announcement
@@ -701,12 +703,12 @@ async def on_ready():
         synced = await bot.tree.sync()
         print(f"Synced {len(synced)} command(s)")
         print(f"Logged in as {bot.user}")
-        
+
         # Setup the persistent view when the bot starts
         # This allows the button to work even after bot restarts
         bot.add_view(PersistentScrimButton())
         print("Added persistent button view")
-        
+
         # Optional: You can make the bot automatically post the button when it starts
         # Uncomment the following code to enable this feature:
         """
@@ -717,7 +719,7 @@ async def on_ready():
             # in a database to check more accurately
             messages = [message async for message in channel.history(limit=20)]
             button_exists = any("📆 Schedule a Scrim" in message.content for message in messages)
-            
+
             if not button_exists:
                 embed = discord.Embed(
                     title="📆 Schedule a Scrim",
@@ -732,7 +734,7 @@ async def on_ready():
                 await channel.send(embed=embed, view=PersistentScrimButton())
                 print("Created persistent button message")
         """
-        
+
     except Exception as e:
         print(f"Error during startup: {e}")
 
