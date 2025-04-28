@@ -70,54 +70,68 @@ class TeamDropdown(discord.ui.Select):
     async def callback(self, interaction: discord.Interaction):
         user_id = interaction.user.id
         scrim_data[user_id] = {"team": self.values[0]}
+        await interaction.response.send_modal(ScrimModal())  # Open the modal immediately
 
-        await interaction.response.send_modal(ScrimModalStep1())  # ✅ Open the modal immediately
-
-class ScrimModalStep1(discord.ui.Modal, title="Scrim Setup: Step 1 - Date and Time"):
-    scrim_date = discord.ui.TextInput(label="Scrim Date (DD-MM-YYYY)", placeholder="01-05-2025")
-    scrim_time = discord.ui.TextInput(label="Scrim Time (HH:MM 24h format)", placeholder="19:00")
+class ScrimModal(discord.ui.Modal, title="Schedule a Scrim"):
+    scrim_date = discord.ui.TextInput(
+        label="Scrim Date (DD-MM-YYYY)",
+        placeholder="01-05-2025",
+        required=True
+    )
+    scrim_time = discord.ui.TextInput(
+        label="Scrim Time (HH:MM 24h format)",
+        placeholder="19:00",
+        required=True
+    )
+    opponent_team = discord.ui.TextInput(
+        label="Opponent Team Name",
+        placeholder="Team Nebula Rising",
+        required=True
+    )
+    opponent_rank = discord.ui.TextInput(
+        label="Opponent Average Rank",
+        placeholder="Ascendant 2",
+        required=True
+    )
+    format = discord.ui.TextInput(
+        label="Format",
+        placeholder="Best of 3",
+        required=True
+    )
+    maps = discord.ui.TextInput(
+        label="Maps",
+        placeholder="Ascent, Sunset, Bind",
+        required=True
+    )
+    server = discord.ui.TextInput(
+        label="Server",
+        placeholder="Texas 1",
+        required=True
+    )
+    players = discord.ui.TextInput(
+        label="Players (Mentioned @players)",
+        placeholder="@Player1 @Player2 @Player3",
+        style=discord.TextStyle.paragraph,
+        required=True
+    )
 
     async def on_submit(self, interaction: discord.Interaction):
         user_id = interaction.user.id
-        scrim_data[user_id]["date"] = self.scrim_date.value
-        scrim_data[user_id]["time"] = self.scrim_time.value
-        await interaction.response.send_modal(ScrimModalStep2())
-
-class ScrimModalStep2(discord.ui.Modal, title="Scrim Setup: Step 2 - Opponent Team Name"):
-    opponent_team = discord.ui.TextInput(label="Opponent Team Name", placeholder="Team Nebula Rising")
-
-    async def on_submit(self, interaction: discord.Interaction):
-        user_id = interaction.user.id
-        scrim_data[user_id]["opponent_team"] = self.opponent_team.value
-        await interaction.response.send_modal(ScrimModalStep3())
-
-class ScrimModalStep3(discord.ui.Modal, title="Scrim Setup: Step 3 - Opponent Average Rank"):
-    opponent_rank = discord.ui.TextInput(label="Opponent Average Rank", placeholder="Ascendant 2")
-
-    async def on_submit(self, interaction: discord.Interaction):
-        user_id = interaction.user.id
-        scrim_data[user_id]["opponent_rank"] = self.opponent_rank.value
-        await interaction.response.send_modal(ScrimModalStep4())
-
-class ScrimModalStep4(discord.ui.Modal, title="Scrim Setup: Step 4 - Format, Maps, Server"):
-    format = discord.ui.TextInput(label="Format", placeholder="Best of 3")
-    maps = discord.ui.TextInput(label="Maps", placeholder="Ascent, Sunset, Bind")
-    server = discord.ui.TextInput(label="Server", placeholder="Texas 1")
-
-    async def on_submit(self, interaction: discord.Interaction):
-        user_id = interaction.user.id
-        scrim_data[user_id]["format"] = self.format.value
-        scrim_data[user_id]["maps"] = self.maps.value
-        scrim_data[user_id]["server"] = self.server.value
-        await interaction.response.send_modal(ScrimModalStep5())
-
-class ScrimModalStep5(discord.ui.Modal, title="Scrim Setup: Step 5 - Players"):
-    players = discord.ui.TextInput(label="List Player Mentions", placeholder="@Player1 @Player2 ...")
-
-    async def on_submit(self, interaction: discord.Interaction):
-        user_id = interaction.user.id
-        scrim_data[user_id]["players"] = self.players.value
-        await interaction.response.send_message(embed=generate_preview_embed(user_id), view=ConfirmView(user_id), ephemeral=True)
+        scrim_data[user_id] = {
+            "date": self.scrim_date.value.strip(),
+            "time": self.scrim_time.value.strip(),
+            "opponent_team": self.opponent_team.value.strip(),
+            "opponent_rank": self.opponent_rank.value.strip(),
+            "format": self.format.value.strip(),
+            "maps": self.maps.value.strip(),
+            "server": self.server.value.strip(),
+            "players": self.players.value.strip()
+        }
+        await interaction.response.send_message(
+            embed=generate_preview_embed(user_id),
+            view=ConfirmView(user_id),
+            ephemeral=True
+        )
 
 # Preview Embed
 
@@ -162,7 +176,7 @@ class ConfirmView(discord.ui.View):
 
     @discord.ui.button(label="🛠️ Edit", style=discord.ButtonStyle.primary)
     async def edit(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await interaction.response.send_modal(ScrimModalStep1())
+        await interaction.response.send_modal(ScrimModal())
 
 # Slash Command to Start
 @bot.tree.command(name="scrim", description="Start a scrim announcement!")
