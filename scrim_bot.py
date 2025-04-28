@@ -61,7 +61,7 @@ scheduled_reminders = {}
 
 # Channel ID where the persistent button message will be posted
 # Change this to the channel where you want the button to appear
-BUTTON_CHANNEL_ID = 1354698542173786344  # Example: using EMEA channel ID
+BUTTON_CHANNEL_ID = 1366433672093237310  # Example: using EMEA channel ID
 
 
 # New function to schedule a reminder task
