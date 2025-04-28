@@ -2,6 +2,7 @@ import discord
 from discord.ext import commands
 import datetime
 import os
+import asyncio
 from discord import app_commands
 from typing import Dict, List, Optional, Union
 
@@ -21,10 +22,10 @@ TEAM_CHANNELS = {
 
 # Define specific colors for each team channel using hexcodes
 TEAM_COLORS = {
-    "Affinity EMEA": discord.Color(0x12d6df),    # #12d6df - EMEA Blue
-    "Affinity Academy": discord.Color(0xf70fff), # #f70fff - ACAD Purple
-    "Affinity Auras": discord.Color(0xff8cfb),   # #ff8cfb - Auras Pink
-    "Affinity NA": discord.Color(0xcb0000)       # #cb0000 - NA Red
+    "Affinity EMEA": discord.Color(0x12d6df),  # #12d6df - EMEA Blue
+    "Affinity Academy": discord.Color(0xf70fff),  # #f70fff - ACAD Purple
+    "Affinity Auras": discord.Color(0xff8cfb),  # #ff8cfb - Auras Pink
+    "Affinity NA": discord.Color(0xcb0000)  # #cb0000 - NA Red
 }
 
 TEAM_ROLES = {
@@ -53,6 +54,117 @@ FORMAT_OPTIONS = ["1 Game MR24", "2 Games MR24", "Best of 1", "Best of 3", "Best
 
 # Temporary storage (in real projects you'd use a DB)
 scrim_data: Dict[int, Dict[str, Union[str, List[str]]]] = {}
+
+# Dictionary to store scheduled reminders
+# Key: unique ID for the scrim, Value: the associated task
+scheduled_reminders = {}
+
+
+# New function to schedule a reminder task
+async def schedule_reminder(team: str, opponent_team: str, date_time_obj: datetime.datetime,
+                            channel_id: int, role_id: int, players: List[str]):
+    """
+    Schedule a reminder 30 minutes before a scrim starts.
+
+    Args:
+        team: The team name (e.g., "Affinity EMEA")
+        opponent_team: The opposing team name
+        date_time_obj: The datetime object for when the scrim starts
+        channel_id: The channel ID where to send the reminder
+        role_id: The role ID to ping with the reminder
+        players: List of player mentions
+    """
+    # Calculate reminder time (30 minutes before scrim)
+    reminder_time = date_time_obj - datetime.timedelta(minutes=30)
+
+    # Calculate seconds to wait until reminder should be sent
+    now = datetime.datetime.now()
+    seconds_until_reminder = (reminder_time - now).total_seconds()
+
+    # Only schedule if the reminder time is in the future
+    if seconds_until_reminder <= 0:
+        print(f"Not scheduling reminder for {team} vs {opponent_team} as the reminder time has already passed")
+        return
+
+    # Create a unique ID for this scrim reminder
+    scrim_id = f"{team}-{opponent_team}-{date_time_obj.timestamp()}"
+
+    # Cancel any existing reminder with the same ID
+    if scrim_id in scheduled_reminders and not scheduled_reminders[scrim_id].done():
+        scheduled_reminders[scrim_id].cancel()
+
+    # Schedule the reminder task
+    task = asyncio.create_task(
+        send_reminder_after_delay(seconds_until_reminder, team, opponent_team,
+                                  date_time_obj, channel_id, role_id, players)
+    )
+
+    # Store the task reference
+    scheduled_reminders[scrim_id] = task
+
+    print(f"✅ Scheduled reminder for {team} vs {opponent_team} at {reminder_time}")
+
+
+async def send_reminder_after_delay(delay_seconds: float, team: str, opponent_team: str,
+                                    date_time_obj: datetime.datetime, channel_id: int,
+                                    role_id: int, players: List[str]):
+    """
+    Wait for the specified delay and then send a reminder message.
+
+    Args:
+        delay_seconds: Seconds to wait before sending the reminder
+        team: The team name
+        opponent_team: The opposing team name
+        date_time_obj: The datetime object for when the scrim starts
+        channel_id: The channel ID where to send the reminder
+        role_id: The role ID to ping with the reminder
+        players: List of player mentions
+    """
+    try:
+        # Wait until it's time to send the reminder
+        await asyncio.sleep(delay_seconds)
+
+        # Get the channel
+        channel = bot.get_channel(channel_id)
+        if not channel:
+            print(f"Error: Could not find channel with ID {channel_id} for reminder")
+            return
+
+        # Format the start time for the reminder
+        start_time = date_time_obj.strftime('%H:%M')
+
+        # Create player pings if any are specified
+        player_pings = "\n".join(players) if players else "Team members"
+
+        # Create the reminder message with role ping
+        reminder_message = (
+            f"🔔 **REMINDER** 🔔\n"
+            f"<@&{role_id}>\n\n"
+            f"Your scrim against **{opponent_team}** starts in 30 minutes at **{start_time}**!\n\n"
+            f"**Players:**\n{player_pings}\n\n"
+            f"Please be ready and in voice channels."
+        )
+
+        # Get the team color for the embed
+        color = TEAM_COLORS.get(team, discord.Color(0x3498DB))
+
+        # Create an embed for the reminder
+        embed = discord.Embed(
+            title=f"⏰ {team} Scrim Reminder",
+            description=reminder_message,
+            color=color
+        )
+
+        # Send the reminder
+        await channel.send(content=f"<@&{role_id}> **30-MINUTE SCRIM REMINDER**", embed=embed)
+        print(f"Sent reminder for {team} vs {opponent_team}")
+
+    except asyncio.CancelledError:
+        # Handle if the task is cancelled
+        print(f"Reminder for {team} vs {opponent_team} was cancelled")
+    except Exception as e:
+        print(f"Error sending reminder: {e}")
+
 
 # Command to Start the Scrim Scheduling
 @bot.tree.command(name="scrim", description="Start a scrim announcement!")
@@ -147,6 +259,8 @@ class ScrimDateTimeModal(discord.ui.Modal, title="Scrim Date and Time"):
             # Store in scrim data
             scrim_data[self.user_id]["date"] = date_str
             scrim_data[self.user_id]["time"] = time_str
+            scrim_data[self.user_id][
+                "date_time_obj"] = date_time_obj  # Store the datetime object for reminder scheduling
 
             # Continue to opponent details
             await interaction.response.send_message(
@@ -396,7 +510,7 @@ class ConfirmationView(discord.ui.View):
         await send_scrim_announcement(self.user_id, interaction)
 
         await interaction.response.send_message(
-            "✅ Scrim announcement confirmed and sent!",
+            "✅ Scrim announcement confirmed and sent! A reminder will be sent 30 minutes before the scrim starts.",
             ephemeral=True
         )
 
@@ -457,6 +571,10 @@ def generate_preview_embed(user_id: int) -> discord.Embed:
     embed.add_field(name="🌍 Server", value=data["server"], inline=False)
     embed.add_field(name="👥 Players", value=players_formatted, inline=False)
 
+    # Add reminder note
+    embed.add_field(name="⏰ Reminder", value="A reminder will be sent 30 minutes before the scrim starts.",
+                    inline=False)
+
     return embed
 
 
@@ -494,6 +612,18 @@ async def send_scrim_announcement(user_id: int, interaction: discord.Interaction
 
     # Send the announcement
     await channel.send(content=content, embed=embed)
+
+    # Schedule the reminder for 30 minutes before the scrim starts
+    date_time_obj = data.get("date_time_obj")
+    if date_time_obj:
+        await schedule_reminder(
+            team=team,
+            opponent_team=data["opponent_team"],
+            date_time_obj=date_time_obj,
+            channel_id=channel_id,
+            role_id=role_id,
+            players=data["players"]
+        )
 
     # Clean up user data
     del scrim_data[user_id]
