@@ -50,34 +50,21 @@ class PersistentPanel(discord.ui.View):
 class TeamSelect(discord.ui.View):
     def __init__(self):
         super().__init__()
+        self.add_item(TeamDropdown())
 
-        self.add_item(discord.ui.Select(
-            placeholder="Select the team for this scrim",
-            min_values=1,
-            max_values=1,
-            options=[
-                discord.SelectOption(label="Affinity EMEA 🇪🇺"),
-                discord.SelectOption(label="Affinity Academy 🇪🇺"),
-                discord.SelectOption(label="Affinity Auras 🇪🇺"),
-                discord.SelectOption(label="Affinity NA 🇺🇸")
-            ],
-            custom_id="team_select"
-        ))
-
-    @discord.ui.select(
-        placeholder="Select the team for this scrim",
-        min_values=1,
-        max_values=1,
-        options=[
+class TeamDropdown(discord.ui.Select):
+    def __init__(self):
+        options = [
             discord.SelectOption(label="Affinity EMEA 🇪🇺"),
             discord.SelectOption(label="Affinity Academy 🇪🇺"),
             discord.SelectOption(label="Affinity Auras 🇪🇺"),
             discord.SelectOption(label="Affinity NA 🇺🇸")
         ]
-    )
-    async def select_team(self, interaction: discord.Interaction, select: discord.ui.Select):
+        super().__init__(placeholder="Select the team for this scrim", min_values=1, max_values=1, options=options)
+
+    async def callback(self, interaction: discord.Interaction):
         user_id = interaction.user.id
-        scrim_data[user_id] = {"team": select.values[0]}
+        scrim_data[user_id] = {"team": self.values[0]}
         await interaction.response.send_modal(ScrimModalStep1())
 
 class ScrimModalStep1(discord.ui.Modal, title="Scrim Setup: Step 1 - Date and Time"):
