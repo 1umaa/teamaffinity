@@ -1,6 +1,5 @@
 import discord
 from discord.ext import commands
-import datetime
 import os
 
 # --- Bot Setup ---
@@ -34,108 +33,7 @@ ALLOWED_ROLES = [
 # Temporary storage (in real projects you'd use a DB)
 scrim_data = {}
 
-# Create the modal for collecting scrim details
-class ScrimModal(discord.ui.Modal, title="Schedule a Scrim"):
-    scrim_date = discord.ui.TextInput(
-        label="Scrim Date (DD-MM-YYYY)",
-        placeholder="01-05-2025",
-        required=True
-    )
-    scrim_time = discord.ui.TextInput(
-        label="Scrim Time (HH:MM 24h format)",
-        placeholder="19:00",
-        required=True
-    )
-    opponent_team = discord.ui.TextInput(
-        label="Opponent Team Name",
-        placeholder="Team Nebula Rising",
-        required=True
-    )
-    opponent_rank = discord.ui.TextInput(
-        label="Opponent Average Rank",
-        placeholder="Ascendant 2",
-        required=True
-    )
-    format = discord.ui.TextInput(
-        label="Format",
-        placeholder="Best of 3",
-        required=True
-    )
-    maps = discord.ui.TextInput(
-        label="Maps",
-        placeholder="Ascent, Sunset, Bind",
-        required=True
-    )
-    server = discord.ui.TextInput(
-        label="Server",
-        placeholder="Texas 1",
-        required=True
-    )
-    players = discord.ui.TextInput(
-        label="Players (Mentioned @players)",
-        placeholder="@Player1 @Player2 @Player3",
-        style=discord.TextStyle.paragraph,
-        required=True
-    )
-
-    async def on_submit(self, interaction: discord.Interaction):
-        user_id = interaction.user.id
-        scrim_data[user_id] = {
-            "date": self.scrim_date.value.strip(),
-            "time": self.scrim_time.value.strip(),
-            "opponent_team": self.opponent_team.value.strip(),
-            "opponent_rank": self.opponent_rank.value.strip(),
-            "format": self.format.value.strip(),
-            "maps": self.maps.value.strip(),
-            "server": self.server.value.strip(),
-            "players": self.players.value.strip()
-        }
-        await interaction.response.send_message(
-            embed=generate_preview_embed(user_id),
-            view=ConfirmView(user_id),
-            ephemeral=True
-        )
-
-# Generate the preview embed
-def generate_preview_embed(user_id):
-    data = scrim_data[user_id]
-    date_time_str = f"{data['date']} {data['time']}"
-    date_time_obj = datetime.datetime.strptime(date_time_str, "%d-%m-%Y %H:%M")
-    unix_timestamp = int(date_time_obj.timestamp())
-    players_formatted = '\n'.join(f"- {player}" for player in data['players'].split())
-
-    embed = discord.Embed(title="🛡️ Scrim Scheduled", color=discord.Color.blue())
-    embed.add_field(name="📅 Date", value=f"<t:{unix_timestamp}:F>", inline=False)
-    embed.add_field(name="🏴 Opponent", value=data["opponent_team"], inline=False)
-    embed.add_field(name="🎯 Opponent Avg. Rank", value=data["opponent_rank"], inline=False)
-    embed.add_field(name="📖 Format", value=data["format"], inline=False)
-    embed.add_field(name="🗺️ Maps", value=data["maps"], inline=False)
-    embed.add_field(name="🌍 Server", value=data["server"], inline=False)
-    embed.add_field(name="👥 Players", value=players_formatted, inline=False)
-    return embed
-
-# Confirm View
-class ConfirmView(discord.ui.View):
-    def __init__(self, user_id):
-        super().__init__(timeout=300)
-        self.user_id = user_id
-
-    @discord.ui.button(label="✅ Confirm", style=discord.ButtonStyle.success)
-    async def confirm(self, interaction: discord.Interaction, button: discord.ui.Button):
-        team = scrim_data[self.user_id]["team"]
-        channel_id = TEAM_CHANNELS.get(team)
-        role_id = TEAM_ROLES.get(team)
-        channel = bot.get_channel(channel_id)
-        await channel.send(f"<@&{role_id}>", embed=generate_preview_embed(self.user_id))
-        await interaction.response.send_message("Scrim announcement sent!", ephemeral=True)
-        scrim_data.pop(self.user_id, None)
-
-    @discord.ui.button(label="❌ Cancel", style=discord.ButtonStyle.danger)
-    async def cancel(self, interaction: discord.Interaction, button: discord.ui.Button):
-        scrim_data.pop(self.user_id, None)
-        await interaction.response.send_message("Scrim announcement canceled.", ephemeral=True)
-
-# Slash Command to Start
+# Command to Start the Scrim Scheduling
 @bot.tree.command(name="scrim", description="Start a scrim announcement!")
 async def scrim(interaction: discord.Interaction):
     if not any(role.id in ALLOWED_ROLES for role in interaction.user.roles):
@@ -143,6 +41,7 @@ async def scrim(interaction: discord.Interaction):
         await interaction.response.send_message(embed=embed, ephemeral=True)
         return
 
+    # Prompt for Team Selection
     await interaction.response.send_message("Please select your team:", view=TeamSelectionPanel(), ephemeral=True)
 
 # Team Selection Panel with Buttons
@@ -170,9 +69,64 @@ class TeamSelectionPanel(discord.ui.View):
         user_id = interaction.user.id
         scrim_data[user_id] = {"team": team}
         
-        # Defer interaction and then open the modal
-        await interaction.response.defer()  # Defer the interaction
-        await interaction.response.send_modal(ScrimModal())  # Open modal correctly
+        # After selecting the team, prompt for scrim date
+        await interaction.response.send_message("You selected: " + team + "\nNow, please enter the scrim date (DD-MM-YYYY):", ephemeral=True)
+
+        # Wait for the date response
+        date_msg = await bot.wait_for('message', check=lambda m: m.author == interaction.user)
+        scrim_data[user_id]["date"] = date_msg.content.strip()
+
+        # Continue prompting for other details in sequence
+        await interaction.followup.send("Now, please enter the scrim time (HH:MM 24h format):", ephemeral=True)
+        time_msg = await bot.wait_for('message', check=lambda m: m.author == interaction.user)
+        scrim_data[user_id]["time"] = time_msg.content.strip()
+
+        await interaction.followup.send("Please enter the opponent team name:", ephemeral=True)
+        opponent_msg = await bot.wait_for('message', check=lambda m: m.author == interaction.user)
+        scrim_data[user_id]["opponent_team"] = opponent_msg.content.strip()
+
+        await interaction.followup.send("What is the opponent's average rank?", ephemeral=True)
+        rank_msg = await bot.wait_for('message', check=lambda m: m.author == interaction.user)
+        scrim_data[user_id]["opponent_rank"] = rank_msg.content.strip()
+
+        await interaction.followup.send("Please provide the format (e.g., Best of 3):", ephemeral=True)
+        format_msg = await bot.wait_for('message', check=lambda m: m.author == interaction.user)
+        scrim_data[user_id]["format"] = format_msg.content.strip()
+
+        await interaction.followup.send("What maps will be played?", ephemeral=True)
+        maps_msg = await bot.wait_for('message', check=lambda m: m.author == interaction.user)
+        scrim_data[user_id]["maps"] = maps_msg.content.strip()
+
+        await interaction.followup.send("Please enter the server (e.g., Texas 1):", ephemeral=True)
+        server_msg = await bot.wait_for('message', check=lambda m: m.author == interaction.user)
+        scrim_data[user_id]["server"] = server_msg.content.strip()
+
+        await interaction.followup.send("Please list the players (e.g., @Player1 @Player2):", ephemeral=True)
+        players_msg = await bot.wait_for('message', check=lambda m: m.author == interaction.user)
+        scrim_data[user_id]["players"] = players_msg.content.strip()
+
+        # Confirm the scrim details
+        await interaction.followup.send(embed=generate_preview_embed(user_id), ephemeral=True)
+
+        # Confirmation
+        await interaction.followup.send("Scrim announcement confirmed and sent!", ephemeral=True)
+
+def generate_preview_embed(user_id):
+    data = scrim_data[user_id]
+    date_time_str = f"{data['date']} {data['time']}"
+    date_time_obj = datetime.datetime.strptime(date_time_str, "%d-%m-%Y %H:%M")
+    unix_timestamp = int(date_time_obj.timestamp())
+    players_formatted = '\n'.join(f"- {player}" for player in data['players'].split())
+
+    embed = discord.Embed(title="🛡️ Scrim Scheduled", color=discord.Color.blue())
+    embed.add_field(name="📅 Date", value=f"<t:{unix_timestamp}:F>", inline=False)
+    embed.add_field(name="🏴 Opponent", value=data["opponent_team"], inline=False)
+    embed.add_field(name="🎯 Opponent Avg. Rank", value=data["opponent_rank"], inline=False)
+    embed.add_field(name="📖 Format", value=data["format"], inline=False)
+    embed.add_field(name="🗺️ Maps", value=data["maps"], inline=False)
+    embed.add_field(name="🌍 Server", value=data["server"], inline=False)
+    embed.add_field(name="👥 Players", value=players_formatted, inline=False)
+    return embed
 
 # Ready Event
 @bot.event
