@@ -25,16 +25,16 @@ TEAM_ROLES = {
 }
 
 ALLOWED_ROLES = [
-    1354079569740824650,  # Board Member Role ID
-    1354078173553365132,  # Manager role ID
-    1354084742072373372,  # Team Captain Role ID
-    1354280624625815773  # Coach role ID
+    1354079569740824650,    # Board Member Role ID
+    1354078173553365132,    # Manager role ID
+    1354084742072373372,    # Team Captain Role ID
+    1354280624625815773     # Coach role ID
 ]
 
 # Temporary storage (in real projects you'd use a DB)
 scrim_data = {}
 
-
+# Create the modal for collecting scrim details
 class ScrimModal(discord.ui.Modal, title="Schedule a Scrim"):
     scrim_date = discord.ui.TextInput(
         label="Scrim Date (DD-MM-YYYY)",
@@ -96,7 +96,7 @@ class ScrimModal(discord.ui.Modal, title="Schedule a Scrim"):
             ephemeral=True
         )
 
-
+# Generate the preview embed
 def generate_preview_embed(user_id):
     data = scrim_data[user_id]
     date_time_str = f"{data['date']} {data['time']}"
@@ -114,7 +114,7 @@ def generate_preview_embed(user_id):
     embed.add_field(name="👥 Players", value=players_formatted, inline=False)
     return embed
 
-
+# Confirm View
 class ConfirmView(discord.ui.View):
     def __init__(self, user_id):
         super().__init__(timeout=300)
@@ -135,58 +135,50 @@ class ConfirmView(discord.ui.View):
         scrim_data.pop(self.user_id, None)
         await interaction.response.send_message("Scrim announcement canceled.", ephemeral=True)
 
-
 # Slash Command to Start
 @bot.tree.command(name="scrim", description="Start a scrim announcement!")
 async def scrim(interaction: discord.Interaction):
     if not any(role.id in ALLOWED_ROLES for role in interaction.user.roles):
-        embed = discord.Embed(title="❌ Access Denied", description="You do not have permission to schedule scrims.",
-                              color=discord.Color.red())
+        embed = discord.Embed(title="❌ Access Denied", description="You do not have permission to schedule scrims.", color=discord.Color.red())
         await interaction.response.send_message(embed=embed, ephemeral=True)
         return
 
-    await interaction.response.send_message("Use the panel below to schedule a scrim!", view=PersistentPanel(),
-                                            ephemeral=True)
+    await interaction.response.send_message("Please select your team:", view=TeamSelectionPanel(), ephemeral=True)
 
-
-# Persistent Panel View
-class PersistentPanel(discord.ui.View):
+# Team Selection Panel with Buttons
+class TeamSelectionPanel(discord.ui.View):
     def __init__(self):
         super().__init__(timeout=300)
-        self.clear_items()  # Reset view
-        self.add_item(TeamDropdown())  # Add dropdown menu for team selection
 
+    @discord.ui.button(label="Affinity EMEA 🇪🇺", style=discord.ButtonStyle.primary)
+    async def select_emea(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await self.select_team(interaction, "Affinity EMEA 🇪🇺")
 
-class TeamDropdown(discord.ui.Select):
-    def __init__(self):
-        options = [
-            discord.SelectOption(label="Affinity EMEA 🇪🇺"),
-            discord.SelectOption(label="Affinity Academy 🇪🇺"),
-            discord.SelectOption(label="Affinity Auras 🇪🇺"),
-            discord.SelectOption(label="Affinity NA 🇺🇸")
-        ]
-        super().__init__(
-            placeholder="Select the team for this scrim",
-            min_values=1,
-            max_values=1,
-            options=options
-        )
+    @discord.ui.button(label="Affinity Academy 🇪🇺", style=discord.ButtonStyle.primary)
+    async def select_academy(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await self.select_team(interaction, "Affinity Academy 🇪🇺")
 
-    async def callback(self, interaction: discord.Interaction):
+    @discord.ui.button(label="Affinity Auras 🇪🇺", style=discord.ButtonStyle.primary)
+    async def select_auras(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await self.select_team(interaction, "Affinity Auras 🇪🇺")
+
+    @discord.ui.button(label="Affinity NA 🇺🇸", style=discord.ButtonStyle.primary)
+    async def select_na(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await self.select_team(interaction, "Affinity NA 🇺🇸")
+
+    async def select_team(self, interaction: discord.Interaction, team: str):
         user_id = interaction.user.id
-        scrim_data[user_id] = {"team": self.values[0]}
-
-        # Defer interaction and then open the modal
+        scrim_data[user_id] = {"team": team}
+        
+        # Defer interaction and open modal for scrim details
         await interaction.response.defer()  # Defer the interaction
-        await interaction.response.send_modal(ScrimModal())  # Open the modal correctly
-
+        await interaction.response.send_modal(ScrimModal())  # Open modal correctly
 
 # Ready Event
 @bot.event
 async def on_ready():
     await bot.tree.sync()  # Sync all slash commands with Discord
     print(f"Logged in as {bot.user}")
-
 
 # --- Run Bot ---
 bot.run(os.getenv("DISCORD_TOKEN"))
