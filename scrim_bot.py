@@ -290,7 +290,7 @@ class TeamSelectionView(discord.ui.View):
             del scrim_data[self.user_id]
 
 
-# Date and Time Modal
+# Date and Time Modal with Timezone
 class ScrimDateTimeModal(discord.ui.Modal, title="Scrim Date and Time"):
     def __init__(self, user_id: int):
         super().__init__()
@@ -311,20 +311,33 @@ class ScrimDateTimeModal(discord.ui.Modal, title="Scrim Date and Time"):
         min_length=5,
         max_length=5
     )
+    
+    timezone_input = discord.ui.TextInput(
+        label="Your timezone (e.g. UTC, GMT, CET, EST)",
+        placeholder="e.g., UTC or UTC+1",
+        required=True,
+        min_length=2,
+        max_length=10
+    )
 
     async def on_submit(self, interaction: discord.Interaction):
         # Validate date and time format
         try:
             date_str = self.date_input.value
             time_str = self.time_input.value
+            timezone_str = self.timezone_input.value.upper().strip()
+            
+            # Store the timezone information
+            scrim_data[self.user_id]["timezone"] = timezone_str
+            
+            # Parse the input date and time as is (without timezone info first)
             date_time_str = f"{date_str} {time_str}"
-            date_time_obj = datetime.datetime.strptime(date_time_str, "%d-%m-%Y %H:%M")
-
-            # Store in scrim data
+            naive_date_time_obj = datetime.datetime.strptime(date_time_str, "%d-%m-%Y %H:%M")
+            
+            # Store in scrim data for later use
             scrim_data[self.user_id]["date"] = date_str
             scrim_data[self.user_id]["time"] = time_str
-            scrim_data[self.user_id][
-                "date_time_obj"] = date_time_obj  # Store the datetime object for reminder scheduling
+            scrim_data[self.user_id]["naive_date_time_obj"] = naive_date_time_obj
 
             # Continue to opponent details
             await interaction.response.send_message(
@@ -594,19 +607,63 @@ class ConfirmationView(discord.ui.View):
             del scrim_data[self.user_id]
 
 
-# Generate preview embed for the scrim
+# Modified generate_preview_embed function with timezone handling
 def generate_preview_embed(user_id: int) -> discord.Embed:
     data = scrim_data[user_id]
     team = data["team"]
 
-    # Format date and time
-    date_time_str = f"{data['date']} {data['time']}"
+    # Get timezone information
+    timezone_str = data.get("timezone", "UTC")  # Default to UTC if not specified
+    
+    # Parse naive datetime
+    naive_date_time_obj = data.get("naive_date_time_obj")
+    
+    # Calculate timestamp based on timezone string
     try:
-        date_time_obj = datetime.datetime.strptime(date_time_str, "%d-%m-%Y %H:%M")
-        unix_timestamp = int(date_time_obj.timestamp())
-    except ValueError:
-        # Fallback in case of format issues
+        # Handle common timezone strings
+        timezone_offset = 0  # Offset in hours
+        
+        if timezone_str == "UTC" or timezone_str == "GMT":
+            timezone_offset = 0
+        elif "UTC+" in timezone_str:
+            timezone_offset = int(timezone_str.replace("UTC+", ""))
+        elif "UTC-" in timezone_str:
+            timezone_offset = -int(timezone_str.replace("UTC-", ""))
+        elif "GMT+" in timezone_str:
+            timezone_offset = int(timezone_str.replace("GMT+", ""))
+        elif "GMT-" in timezone_str:
+            timezone_offset = -int(timezone_str.replace("GMT-", ""))
+        elif timezone_str == "CET":
+            timezone_offset = 1
+        elif timezone_str == "CEST":
+            timezone_offset = 2
+        elif timezone_str == "BST":
+            timezone_offset = 1
+        elif timezone_str == "EST":
+            timezone_offset = -5
+        elif timezone_str == "EDT":
+            timezone_offset = -4
+        elif timezone_str == "PST":
+            timezone_offset = -8
+        elif timezone_str == "PDT":
+            timezone_offset = -7
+        # Add more timezone mappings as needed
+        
+        # Calculate timestamp
+        # First, get timestamp as if it's UTC
+        utc_timestamp = int(naive_date_time_obj.timestamp())
+        
+        # Then adjust based on the timezone offset
+        # Subtract hours*3600 to convert from local time to UTC
+        unix_timestamp = utc_timestamp - (timezone_offset * 3600)
+        
+    except (ValueError, AttributeError):
+        # Fallback in case of issues
         unix_timestamp = int(datetime.datetime.now().timestamp())
+    
+    # Update the date_time_obj for reminder scheduling
+    # Use timezone-adjusted timestamp to create a proper UTC datetime
+    data["date_time_obj"] = datetime.datetime.fromtimestamp(unix_timestamp)
 
     # Format players list
     players_formatted = '\n'.join(f"- {player}" for player in data['players'])
