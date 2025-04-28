@@ -10,6 +10,9 @@ intents.message_content = True
 intents.members = True
 bot = commands.Bot(command_prefix="/", intents=intents)
 
+PANEL_CHANNEL_ID = 1366433672093237310  # replace with your real channel ID
+PANEL_MESSAGE_ID = None  # We'll dynamically track it
+
 # Team channel and role IDs (replace with your real IDs)
 TEAM_CHANNELS = {
     "Affinity EMEA 🇪🇺": 1354698542173786344,
@@ -169,13 +172,35 @@ async def on_ready():
     reminder_task.start()
     print(f"Logged in as {bot.user}")
 
+    channel = bot.get_channel(PANEL_CHANNEL_ID)
+    if not channel:
+        print("Panel channel not found!")
+        return
+
+    global PANEL_MESSAGE_ID
+
+    # Try to edit the existing panel if ID exists
+    if PANEL_MESSAGE_ID:
+        try:
+            message = await channel.fetch_message(PANEL_MESSAGE_ID)
+            await message.edit(content="➕ **Schedule a Scrim**", view=PersistentPanel())
+            print("Updated existing panel message!")
+            return
+        except (discord.NotFound, discord.HTTPException):
+            print("Previous panel message not found or could not edit. Sending new panel.")
+
+    # If no existing panel or failed fetch, send new one
+    message = await channel.send("➕ **Schedule a Scrim**", view=PersistentPanel())
+    PANEL_MESSAGE_ID = message.id
+    print("New panel message sent!")
+
 # Reminder Task
 @tasks.loop(minutes=1)
 async def reminder_task():
     now = datetime.datetime.utcnow()
     for user_id, data in scheduled_scrims.copy():
         date_time_str = f"{data['date']} {data['time']}"
-        scrim_time = datetime.datetime.strptime(date_time_str, "%Y-%m-%d %H:%M")
+        scrim_time = datetime.datetime.strptime(date_time_str, "%d-%m-%Y %H:%M")
         scrim_time = scrim_time - datetime.timedelta(minutes=0)
         if scrim_time - now <= datetime.timedelta(minutes=30) and scrim_time - now > datetime.timedelta(minutes=29):
             team = data["team"]
