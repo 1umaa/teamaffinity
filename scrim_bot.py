@@ -50,7 +50,7 @@ SERVER_OPTIONS = ["Frankfurt", "London", "Amsterdam", "Paris", "Warsaw", "Stockh
                   "Texas", "Oregon", "California"]
 
 # Format options
-FORMAT_OPTIONS = ["1 Game", "2 Games", "1 Game MR24", "2 Games MR24", "Best of 1", "Best of 3", "Best of 5"]
+FORMAT_OPTIONS = ["1 Game MR24", "2 Games MR24", "Best of 1", "Best of 3", "Best of 5"]
 
 # Temporary storage (in real projects you'd use a DB)
 scrim_data: Dict[int, Dict[str, Union[str, List[str]]]] = {}
@@ -73,7 +73,7 @@ async def schedule_reminder(team: str, opponent_team: str, date_time_obj: dateti
     Args:
         team: The team name (e.g., "Affinity EMEA")
         opponent_team: The opposing team name
-        date_time_obj: The datetime object for when the scrim starts
+        date_time_obj: The datetime object for when the scrim starts (already timezone-adjusted)
         channel_id: The channel ID where to send the reminder
         role_id: The role ID to ping with the reminder
         players: List of player mentions
@@ -119,7 +119,7 @@ async def send_reminder_after_delay(delay_seconds: float, team: str, opponent_te
         delay_seconds: Seconds to wait before sending the reminder
         team: The team name
         opponent_team: The opposing team name
-        date_time_obj: The datetime object for when the scrim starts
+        date_time_obj: The datetime object for when the scrim starts (already timezone-adjusted)
         channel_id: The channel ID where to send the reminder
         role_id: The role ID to ping with the reminder
         players: List of player mentions
@@ -134,17 +134,17 @@ async def send_reminder_after_delay(delay_seconds: float, team: str, opponent_te
             print(f"Error: Could not find channel with ID {channel_id} for reminder")
             return
 
-        # Format the start time for the reminder
-        start_time = date_time_obj.strftime('%H:%M')
+        # Convert the datetime to a Unix timestamp for Discord's timestamp format
+        unix_timestamp = int(date_time_obj.timestamp())
 
         # Create player pings if any are specified
         player_pings = "\n".join(players) if players else "Team members"
 
-        # Create the reminder message with role ping
+        # Create the reminder message with role ping and Discord timestamp
         reminder_message = (
             f"🔔 **REMINDER** 🔔\n"
             f"<@&{role_id}>\n\n"
-            f"Your scrim against **{opponent_team}** starts in 30 minutes at **{start_time}**!\n\n"
+            f"Your scrim against **{opponent_team}** starts in 30 minutes at <t:{unix_timestamp}:t>!\n\n"
             f"**Players:**\n{player_pings}\n\n"
             f"Please be ready and in voice channels."
         )
