@@ -5,6 +5,9 @@ import os
 import asyncio
 from discord import app_commands
 from typing import Dict, List, Optional, Union
+import re
+import googleapiclient.discovery
+from google.oauth2.credentials import Credentials
 
 # --- Bot Setup ---
 intents = discord.Intents.default()
@@ -63,6 +66,390 @@ scheduled_reminders = {}
 # Change this to the channel where you want the button to appear
 BUTTON_CHANNEL_ID = 1354698542173786344  # Example: using EMEA channel ID
 
+# ----- ABSENCE MANAGEMENT CONFIGURATION -----
+
+# Get environment variables from Railway for Google Calendar API
+GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID")
+GOOGLE_CLIENT_SECRET = os.getenv("GOOGLE_CLIENT_SECRET")
+GOOGLE_REFRESH_TOKEN = os.getenv("GOOGLE_REFRESH_TOKEN")
+GOOGLE_CALENDAR_ID = os.getenv("GOOGLE_CALENDAR_ID")
+
+# Absence types with their descriptions
+ABSENCE_TYPES = [
+    {"label": "Vacation", "value": "vacation", "description": "Planned time off"},
+    {"label": "Sick Leave", "value": "sick", "description": "Unable to attend due to illness"},
+    {"label": "Personal Day", "value": "personal", "description": "Time off for personal matters"},
+    {"label": "Family Emergency", "value": "family", "description": "Absence due to family emergency"},
+    {"label": "Other", "value": "other", "description": "Other type of absence"}
+]
+
+# Team structure for absence management - uses the same teams as the scrim scheduler
+ABSENCE_TEAM_STRUCTURE = {
+    "Affinity EMEA": {
+        "team_role_id": TEAM_ROLES["Affinity EMEA"],
+    },
+    "Affinity Academy": {
+        "team_role_id": TEAM_ROLES["Affinity Academy"],
+    },
+    "Affinity Auras": {
+        "team_role_id": TEAM_ROLES["Affinity Auras"],
+    },
+    "Affinity NA": {
+        "team_role_id": TEAM_ROLES["Affinity NA"],
+    }
+}
+
+# Management role ID for all absence notifications
+MANAGEMENT_ROLE_ID = 1354078173553365132  # Using the Manager role ID
+
+# Management channel for absence notifications - can be adjusted as needed
+ABSENCE_MANAGEMENT_CHANNEL_ID = 1367628087130456135  # Channel ID for absence notifications
+
+
+# ----- ABSENCE MANAGEMENT CLASSES -----
+
+class AbsenceButton(discord.ui.Button):
+    """Button for submitting an absence notification."""
+
+    def __init__(self):
+        super().__init__(
+            style=discord.ButtonStyle.primary,
+            label="Submit Absence",
+            custom_id="submit_absence",
+            emoji="📅"
+        )
+
+    async def callback(self, interaction: discord.Interaction):
+        """Handle button press."""
+        view = AbsenceTypeView()
+        await interaction.response.send_message(
+            "Please select the type of absence:",
+            view=view,
+            ephemeral=True
+        )
+
+
+class PersistentAbsenceView(discord.ui.View):
+    """View containing the persistent absence button."""
+
+    def __init__(self):
+        super().__init__(timeout=None)  # Persistent view has no timeout
+        self.add_item(AbsenceButton())
+
+
+class AbsenceTypeView(discord.ui.View):
+    """View with a dropdown menu for absence type selection."""
+
+    def __init__(self):
+        super().__init__(timeout=300.0)  # 5 minute timeout
+
+        # Create the dropdown menu
+        self.select = discord.ui.Select(
+            placeholder="Select absence type",
+            options=[
+                discord.SelectOption(
+                    label=absence_type["label"],
+                    value=absence_type["value"],
+                    description=absence_type["description"]
+                )
+                for absence_type in ABSENCE_TYPES
+            ],
+            min_values=1,
+            max_values=1
+        )
+
+        # Set the callback for when an option is selected
+        self.select.callback = self.on_select
+        self.add_item(self.select)
+
+    async def on_select(self, interaction: discord.Interaction):
+        """Callback for when an absence type is selected."""
+        absence_type = next(
+            (type for type in ABSENCE_TYPES if type["value"] == self.select.values[0]),
+            None
+        )
+
+        if absence_type:
+            # Create and show the modal form
+            modal = AbsenceDetailsModal(absence_type)
+            await interaction.response.send_modal(modal)
+
+
+class AbsenceDetailsModal(discord.ui.Modal):
+    """Modal form for collecting absence details."""
+
+    def __init__(self, absence_type: Dict[str, str]):
+        self.absence_type = absence_type
+        super().__init__(title=f"{absence_type['label']} Details")
+
+        # Create the form fields
+        self.start_date = discord.ui.TextInput(
+            label="Start Date (YYYY-MM-DD)",
+            placeholder="e.g., 2025-05-10",
+            required=True
+        )
+        self.end_date = discord.ui.TextInput(
+            label="End Date (YYYY-MM-DD)",
+            placeholder="e.g., 2025-05-15",
+            required=True
+        )
+        self.team = discord.ui.TextInput(
+            label="Your Team",
+            placeholder="e.g., Affinity EMEA",
+            required=True
+        )
+        self.reason = discord.ui.TextInput(
+            label="Reason for absence",
+            placeholder="Please provide details about your absence...",
+            style=discord.TextStyle.paragraph,
+            required=True,
+            max_length=1000
+        )
+
+        # Add the inputs to the modal
+        self.add_item(self.start_date)
+        self.add_item(self.end_date)
+        self.add_item(self.team)
+        self.add_item(self.reason)
+
+    async def on_submit(self, interaction: discord.Interaction):
+        """Process the form submission."""
+        # Get the form data
+        start_date = self.start_date.value
+        end_date = self.end_date.value
+        team = self.team.value
+        reason = self.reason.value
+
+        # Validate dates
+        if not is_valid_date(start_date) or not is_valid_date(end_date):
+            await interaction.response.send_message(
+                "Invalid date format. Please use YYYY-MM-DD.",
+                ephemeral=True
+            )
+            return
+
+        # Check if the team exists
+        if team not in ABSENCE_TEAM_STRUCTURE:
+            await interaction.response.send_message(
+                f"Team '{team}' not found. Available teams: {', '.join(ABSENCE_TEAM_STRUCTURE.keys())}",
+                ephemeral=True
+            )
+            return
+
+        # Create confirmation embed
+        confirm_embed = discord.Embed(
+            title="Absence Submitted",
+            color=discord.Color.green()
+        )
+        confirm_embed.add_field(name="Type", value=self.absence_type["label"], inline=True)
+        confirm_embed.add_field(name="Start Date", value=start_date, inline=True)
+        confirm_embed.add_field(name="End Date", value=end_date, inline=True)
+        confirm_embed.add_field(name="Team", value=team, inline=False)
+        confirm_embed.add_field(name="Reason", value=reason, inline=False)
+        confirm_embed.timestamp = datetime.datetime.now()
+
+        # Send confirmation to the user
+        await interaction.response.send_message(
+            content="Your absence has been submitted successfully!",
+            embed=confirm_embed,
+            ephemeral=True
+        )
+
+        # Send notification to management channel
+        await self.send_management_notification(
+            interaction,
+            interaction.user,
+            self.absence_type["label"],
+            start_date,
+            end_date,
+            team,
+            reason
+        )
+
+        # Add to Google Calendar
+        try:
+            calendar_link = await add_to_google_calendar(
+                player_name=interaction.user.display_name,
+                absence_type=self.absence_type["label"],
+                start_date=start_date,
+                end_date=end_date,
+                reason=reason,
+                team=team
+            )
+
+            # Inform user about calendar addition (optional)
+            if calendar_link:
+                await interaction.followup.send(
+                    f"Event added to the team calendar: {calendar_link}",
+                    ephemeral=True
+                )
+        except Exception as e:
+            # Log the error but don't inform the user
+            print(f"Error adding to Google Calendar: {e}")
+
+    async def send_management_notification(
+            self,
+            interaction: discord.Interaction,
+            user: discord.User,
+            absence_type: str,
+            start_date: str,
+            end_date: str,
+            team: str,
+            reason: str
+    ):
+        """Send notification to the management channel."""
+        channel = interaction.client.get_channel(ABSENCE_MANAGEMENT_CHANNEL_ID)
+        if not channel:
+            print(f"Management channel with ID {ABSENCE_MANAGEMENT_CHANNEL_ID} not found.")
+            return
+
+        # Get team role ID
+        team_role_id = ABSENCE_TEAM_STRUCTURE[team]["team_role_id"]
+
+        # Create notification embed
+        notification_embed = discord.Embed(
+            title="New Absence Notification",
+            color=discord.Color.orange()
+        )
+        notification_embed.add_field(name="Player", value=user.mention, inline=True)
+        notification_embed.add_field(name="Type", value=absence_type, inline=True)
+        notification_embed.add_field(name="Start Date", value=start_date, inline=True)
+        notification_embed.add_field(name="End Date", value=end_date, inline=True)
+        notification_embed.add_field(name="Team", value=team, inline=False)
+        notification_embed.add_field(name="Reason", value=reason, inline=False)
+        notification_embed.timestamp = datetime.datetime.now()
+
+        # Mention the team role and management role
+        content = f"<@&{team_role_id}> <@&{MANAGEMENT_ROLE_ID}> - New absence notification from team member"
+
+        await channel.send(content=content, embed=notification_embed)
+
+
+# ----- ABSENCE MANAGEMENT FUNCTIONS -----
+
+# Function to validate date format (YYYY-MM-DD)
+def is_valid_date(date_string: str) -> bool:
+    """Validate if the string is a correctly formatted date."""
+    # Check format with regex
+    if not re.match(r"^\d{4}-\d{2}-\d{2}$", date_string):
+        return False
+
+    # Check if it's a valid date
+    try:
+        datetime.datetime.strptime(date_string, "%Y-%m-%d")
+        return True
+    except ValueError:
+        return False
+
+
+async def add_to_google_calendar(
+        player_name: str,
+        absence_type: str,
+        start_date: str,
+        end_date: str,
+        reason: str,
+        team: str
+) -> Optional[str]:
+    """Add the absence to Google Calendar and return the event link."""
+    try:
+        # Set up credentials using Railway environment variables
+        credentials = Credentials.from_authorized_user_info({
+            "client_id": GOOGLE_CLIENT_ID,
+            "client_secret": GOOGLE_CLIENT_SECRET,
+            "refresh_token": GOOGLE_REFRESH_TOKEN,
+        })
+
+        # Set up Google Calendar API
+        calendar_service = googleapiclient.discovery.build(
+            "calendar", "v3", credentials=credentials
+        )
+
+        # Get color ID based on absence type
+        color_id = get_color_id_for_absence_type(absence_type)
+
+        # Create event
+        event = {
+            "summary": f"{player_name} - {absence_type}",
+            "description": f"Team: {team}\nReason: {reason}",
+            "start": {
+                "date": start_date,  # All day event
+            },
+            "end": {
+                "date": end_date,  # All day event
+            },
+            "colorId": color_id,
+        }
+
+        # Insert the event
+        response = calendar_service.events().insert(
+            calendarId=GOOGLE_CALENDAR_ID,
+            body=event
+        ).execute()
+
+        print(f"Event created: {response.get('htmlLink')}")
+        return response.get("htmlLink")
+
+    except Exception as e:
+        print(f"Error in add_to_google_calendar: {e}")
+        raise
+
+
+def get_color_id_for_absence_type(absence_type: str) -> str:
+    """Get Google Calendar color ID based on absence type."""
+    # Google Calendar color IDs (1-11)
+    color_map = {
+        "Vacation": "9",  # Blue
+        "Sick Leave": "11",  # Red
+        "Personal Day": "5",  # Yellow
+        "Family Emergency": "4",  # Purple
+        "Other": "8",  # Gray
+    }
+
+    return color_map.get(absence_type, "1")
+
+
+class AbsenceCog(commands.Cog):
+    """Cog that handles absence-related functionality."""
+
+    def __init__(self, bot):
+        self.bot = bot
+        # Create a persistent view when the cog is initialized
+        self.persistent_view = PersistentAbsenceView()
+
+    # This will be used for manually setting up the persistent button
+    @app_commands.command(
+        name="setup_absence_button",
+        description="Set up the persistent absence button in this channel"
+    )
+    @app_commands.default_permissions(administrator=True)
+    async def setup_absence_button(self, interaction: discord.Interaction):
+        """Admin slash command to set up the persistent absence button."""
+        embed = discord.Embed(
+            title="Team Absence Management",
+            description="Click the button below to submit an absence notification.",
+            color=discord.Color.blue()
+        )
+        await interaction.response.send_message("Setting up absence button...", ephemeral=True)
+        await interaction.channel.send(embed=embed, view=self.persistent_view)
+        await interaction.followup.send("Absence button has been set up successfully!", ephemeral=True)
+
+    # Alternative way to access the feature
+    @app_commands.command(
+        name="absence",
+        description="Submit an absence notification"
+    )
+    async def absence(self, interaction: discord.Interaction):
+        """Handle the /absence slash command."""
+        # Send the absence type selection view
+        view = AbsenceTypeView()
+        await interaction.response.send_message(
+            "Please select the type of absence:",
+            view=view,
+            ephemeral=True
+        )
+
+
+# ----- EXISTING SCRIM SCHEDULER CODE -----
 
 # New function to schedule a reminder task
 async def schedule_reminder(team: str, opponent_team: str, date_time_obj: datetime.datetime,
@@ -311,7 +698,7 @@ class ScrimDateTimeModal(discord.ui.Modal, title="Scrim Date and Time"):
         min_length=5,
         max_length=5
     )
-    
+
     timezone_input = discord.ui.TextInput(
         label="Your timezone (e.g. UTC, GMT, CET, EST)",
         placeholder="e.g., UTC or UTC+1",
@@ -326,14 +713,14 @@ class ScrimDateTimeModal(discord.ui.Modal, title="Scrim Date and Time"):
             date_str = self.date_input.value
             time_str = self.time_input.value
             timezone_str = self.timezone_input.value.upper().strip()
-            
+
             # Store the timezone information
             scrim_data[self.user_id]["timezone"] = timezone_str
-            
+
             # Parse the input date and time as is (without timezone info first)
             date_time_str = f"{date_str} {time_str}"
             naive_date_time_obj = datetime.datetime.strptime(date_time_str, "%d-%m-%Y %H:%M")
-            
+
             # Store in scrim data for later use
             scrim_data[self.user_id]["date"] = date_str
             scrim_data[self.user_id]["time"] = time_str
@@ -411,7 +798,6 @@ class FormatSelectionView(discord.ui.View):
         if self.user_id in scrim_data:
             del scrim_data[self.user_id]
 
-
 # Format Selector Dropdown
 class FormatSelector(discord.ui.Select):
     def __init__(self, user_id: int):
@@ -440,7 +826,6 @@ class FormatSelector(discord.ui.Select):
             view=MapSelectionView(self.user_id),
             ephemeral=True
         )
-
 
 # Maps Selection View
 class MapSelectionView(discord.ui.View):
@@ -486,7 +871,6 @@ class MapSelector(discord.ui.Select):
             ephemeral=True
         )
 
-
 # Server Selection View
 class ServerSelectionView(discord.ui.View):
     def __init__(self, user_id: int):
@@ -499,7 +883,6 @@ class ServerSelectionView(discord.ui.View):
     async def on_timeout(self):
         if self.user_id in scrim_data:
             del scrim_data[self.user_id]
-
 
 # Server Selector Dropdown
 class ServerSelector(discord.ui.Select):
@@ -530,7 +913,6 @@ class ServerSelector(discord.ui.Select):
             ephemeral=True
         )
 
-
 # Player Selection View
 class PlayerSelectionView(discord.ui.View):
     def __init__(self, user_id: int):
@@ -544,7 +926,6 @@ class PlayerSelectionView(discord.ui.View):
     async def on_timeout(self):
         if self.user_id in scrim_data:
             del scrim_data[self.user_id]
-
 
 # Player Selection Modal
 class PlayerSelectionModal(discord.ui.Modal, title="Player Selection"):
@@ -573,7 +954,6 @@ class PlayerSelectionModal(discord.ui.Modal, title="Player Selection"):
             view=ConfirmationView(self.user_id),
             ephemeral=True
         )
-
 
 # Confirmation View
 class ConfirmationView(discord.ui.View):
@@ -606,7 +986,6 @@ class ConfirmationView(discord.ui.View):
         if self.user_id in scrim_data:
             del scrim_data[self.user_id]
 
-
 # Modified generate_preview_embed function with timezone handling
 def generate_preview_embed(user_id: int) -> discord.Embed:
     data = scrim_data[user_id]
@@ -614,15 +993,15 @@ def generate_preview_embed(user_id: int) -> discord.Embed:
 
     # Get timezone information
     timezone_str = data.get("timezone", "UTC")  # Default to UTC if not specified
-    
+
     # Parse naive datetime
     naive_date_time_obj = data.get("naive_date_time_obj")
-    
+
     # Calculate timestamp based on timezone string
     try:
         # Handle common timezone strings
         timezone_offset = 0  # Offset in hours
-        
+
         if timezone_str == "UTC" or timezone_str == "GMT":
             timezone_offset = 0
         elif "UTC+" in timezone_str:
@@ -648,19 +1027,19 @@ def generate_preview_embed(user_id: int) -> discord.Embed:
         elif timezone_str == "PDT":
             timezone_offset = -7
         # Add more timezone mappings as needed
-        
+
         # Calculate timestamp
         # First, get timestamp as if it's UTC
         utc_timestamp = int(naive_date_time_obj.timestamp())
-        
+
         # Then adjust based on the timezone offset
         # Subtract hours*3600 to convert from local time to UTC
         unix_timestamp = utc_timestamp - (timezone_offset * 3600)
-        
+
     except (ValueError, AttributeError):
         # Fallback in case of issues
         unix_timestamp = int(datetime.datetime.now().timestamp())
-    
+
     # Update the date_time_obj for reminder scheduling
     # Use timezone-adjusted timestamp to create a proper UTC datetime
     data["date_time_obj"] = datetime.datetime.fromtimestamp(unix_timestamp)
@@ -697,7 +1076,6 @@ def generate_preview_embed(user_id: int) -> discord.Embed:
                     inline=False)
 
     return embed
-
 
 # Send scrim announcement to the proper channel
 async def send_scrim_announcement(user_id: int, interaction: discord.Interaction) -> None:
@@ -751,6 +1129,18 @@ async def send_scrim_announcement(user_id: int, interaction: discord.Interaction
     # Clean up user data
     del scrim_data[user_id]
 
+# ----- SETUP FUNCTIONS AND EXTENSIONS -----
+
+async def setup_absence_management():
+    """Setup function to add the absence management cog."""
+    # Register the persistent view
+    bot.add_view(PersistentAbsenceView())
+    print("Registered persistent absence button view")
+
+    # Add the cog
+    cog = AbsenceCog(bot)
+    await bot.add_cog(cog)
+    print("Added absence management cog")
 
 # Ready Event
 @bot.event
@@ -761,10 +1151,14 @@ async def on_ready():
         print(f"Synced {len(synced)} command(s)")
         print(f"Logged in as {bot.user}")
 
-        # Setup the persistent view when the bot starts
+        # Setup the persistent scrim button view when the bot starts
         # This allows the button to work even after bot restarts
         bot.add_view(PersistentScrimButton())
-        print("Added persistent button view")
+        print("Added persistent scrim button view")
+
+        # Load absence management
+        await setup_absence_management()
+        print("Absence management feature loaded")
 
         # Optional: You can make the bot automatically post the button when it starts
         # Uncomment the following code to enable this feature:
@@ -794,7 +1188,6 @@ async def on_ready():
 
     except Exception as e:
         print(f"Error during startup: {e}")
-
 
 # --- Run Bot ---
 bot.run(os.getenv("DISCORD_TOKEN"))
