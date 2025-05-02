@@ -408,45 +408,43 @@ def get_color_id_for_absence_type(absence_type: str) -> str:
     return color_map.get(absence_type, "1")
 
 
-class AbsenceCog(commands.Cog):
-    """Cog that handles absence-related functionality."""
+# ----- ABSENCE MANAGEMENT COMMANDS -----
 
-    def __init__(self, bot):
-        self.bot = bot
-        # Create a persistent view when the cog is initialized
-        self.persistent_view = PersistentAbsenceView()
-
-    # This will be used for manually setting up the persistent button
-    @app_commands.command(
-        name="setup_absence_button",
-        description="Set up the persistent absence button in this channel"
-    )
-    @app_commands.default_permissions(administrator=True)
-    async def setup_absence_button(self, interaction: discord.Interaction):
-        """Admin slash command to set up the persistent absence button."""
+# Setup absence button command - registered directly to the bot.tree
+@bot.tree.command(name="setup_absence_button", description="Set up the persistent absence button in this channel")
+async def setup_absence_button(interaction: discord.Interaction):
+    """Admin slash command to set up the persistent absence button."""
+    # Check for admin permissions
+    if not interaction.user.guild_permissions.administrator:
         embed = discord.Embed(
-            title="Team Absence Management",
-            description="Click the button below to submit an absence notification.",
-            color=discord.Color.blue()
+            title="❌ Access Denied",
+            description="You need administrator permissions to create a persistent button.",
+            color=discord.Color.red()
         )
-        await interaction.response.send_message("Setting up absence button...", ephemeral=True)
-        await interaction.channel.send(embed=embed, view=self.persistent_view)
-        await interaction.followup.send("Absence button has been set up successfully!", ephemeral=True)
+        await interaction.response.send_message(embed=embed, ephemeral=True)
+        return
 
-    # Alternative way to access the feature
-    @app_commands.command(
-        name="absence",
-        description="Submit an absence notification"
+    embed = discord.Embed(
+        title="Team Absence Management",
+        description="Click the button below to submit an absence notification.",
+        color=discord.Color.blue()
     )
-    async def absence(self, interaction: discord.Interaction):
-        """Handle the /absence slash command."""
-        # Send the absence type selection view
-        view = AbsenceTypeView()
-        await interaction.response.send_message(
-            "Please select the type of absence:",
-            view=view,
-            ephemeral=True
-        )
+    await interaction.response.send_message("Setting up absence button...", ephemeral=True)
+    await interaction.channel.send(embed=embed, view=PersistentAbsenceView())
+    await interaction.followup.send("Absence button has been set up successfully!", ephemeral=True)
+
+
+# Alternative way to access the feature
+@bot.tree.command(name="absence", description="Submit an absence notification")
+async def absence(interaction: discord.Interaction):
+    """Handle the /absence slash command."""
+    # Send the absence type selection view
+    view = AbsenceTypeView()
+    await interaction.response.send_message(
+        "Please select the type of absence:",
+        view=view,
+        ephemeral=True
+    )
 
 
 # ----- EXISTING SCRIM SCHEDULER CODE -----
@@ -798,6 +796,7 @@ class FormatSelectionView(discord.ui.View):
         if self.user_id in scrim_data:
             del scrim_data[self.user_id]
 
+
 # Format Selector Dropdown
 class FormatSelector(discord.ui.Select):
     def __init__(self, user_id: int):
@@ -827,7 +826,9 @@ class FormatSelector(discord.ui.Select):
             ephemeral=True
         )
 
-# Maps Selection View
+    # Maps Selection View
+
+
 class MapSelectionView(discord.ui.View):
     def __init__(self, user_id: int):
         super().__init__(timeout=300)
@@ -841,8 +842,9 @@ class MapSelectionView(discord.ui.View):
         if self.user_id in scrim_data:
             del scrim_data[self.user_id]
 
+    # Maps Selector Dropdown
 
-# Maps Selector Dropdown
+
 class MapSelector(discord.ui.Select):
     def __init__(self, user_id: int, max_maps: int):
         self.user_id = user_id
@@ -871,7 +873,9 @@ class MapSelector(discord.ui.Select):
             ephemeral=True
         )
 
-# Server Selection View
+    # Server Selection View
+
+
 class ServerSelectionView(discord.ui.View):
     def __init__(self, user_id: int):
         super().__init__(timeout=300)
@@ -884,7 +888,9 @@ class ServerSelectionView(discord.ui.View):
         if self.user_id in scrim_data:
             del scrim_data[self.user_id]
 
-# Server Selector Dropdown
+    # Server Selector Dropdown
+
+
 class ServerSelector(discord.ui.Select):
     def __init__(self, user_id: int):
         self.user_id = user_id
@@ -913,7 +919,9 @@ class ServerSelector(discord.ui.Select):
             ephemeral=True
         )
 
-# Player Selection View
+    # Player Selection View
+
+
 class PlayerSelectionView(discord.ui.View):
     def __init__(self, user_id: int):
         super().__init__(timeout=300)
@@ -927,7 +935,9 @@ class PlayerSelectionView(discord.ui.View):
         if self.user_id in scrim_data:
             del scrim_data[self.user_id]
 
-# Player Selection Modal
+    # Player Selection Modal
+
+
 class PlayerSelectionModal(discord.ui.Modal, title="Player Selection"):
     def __init__(self, user_id: int):
         super().__init__()
@@ -955,7 +965,9 @@ class PlayerSelectionModal(discord.ui.Modal, title="Player Selection"):
             ephemeral=True
         )
 
-# Confirmation View
+    # Confirmation View
+
+
 class ConfirmationView(discord.ui.View):
     def __init__(self, user_id: int):
         super().__init__(timeout=300)
@@ -986,7 +998,9 @@ class ConfirmationView(discord.ui.View):
         if self.user_id in scrim_data:
             del scrim_data[self.user_id]
 
-# Modified generate_preview_embed function with timezone handling
+    # Modified generate_preview_embed function with timezone handling
+
+
 def generate_preview_embed(user_id: int) -> discord.Embed:
     data = scrim_data[user_id]
     team = data["team"]
@@ -1077,7 +1091,9 @@ def generate_preview_embed(user_id: int) -> discord.Embed:
 
     return embed
 
-# Send scrim announcement to the proper channel
+    # Send scrim announcement to the proper channel
+
+
 async def send_scrim_announcement(user_id: int, interaction: discord.Interaction) -> None:
     data = scrim_data[user_id]
     team = data["team"]
@@ -1129,35 +1145,26 @@ async def send_scrim_announcement(user_id: int, interaction: discord.Interaction
     # Clean up user data
     del scrim_data[user_id]
 
-# ----- SETUP FUNCTIONS AND EXTENSIONS -----
+    # ----- SETUP FUNCTIONS AND EXTENSIONS -----
 
-async def setup_absence_management():
-    """Setup function to add the absence management cog."""
-    # Register the persistent view
-    bot.add_view(PersistentAbsenceView())
-    print("Registered persistent absence button view")
+    # Ready Event
 
-    # Add the cog
-    cog = AbsenceCog(bot)
-    await bot.add_cog(cog)
-    print("Added absence management cog")
 
-# Ready Event
 @bot.event
 async def on_ready():
     try:
-        # Sync all slash commands with Discord
+        # First register persistent views
+        bot.add_view(PersistentScrimButton())
+        print("Added persistent scrim button view")
+
+        bot.add_view(PersistentAbsenceView())
+        print("Registered persistent absence button view")
+
+        # Then sync the commands with Discord
         synced = await bot.tree.sync()
         print(f"Synced {len(synced)} command(s)")
         print(f"Logged in as {bot.user}")
 
-        # Setup the persistent scrim button view when the bot starts
-        # This allows the button to work even after bot restarts
-        bot.add_view(PersistentScrimButton())
-        print("Added persistent scrim button view")
-
-        # Load absence management
-        await setup_absence_management()
         print("Absence management feature loaded")
 
         # Optional: You can make the bot automatically post the button when it starts
@@ -1188,6 +1195,16 @@ async def on_ready():
 
     except Exception as e:
         print(f"Error during startup: {e}")
+
+
+# Command to force sync all slash commands - useful for troubleshooting
+@bot.command(name="forcesync")
+@commands.is_owner()
+async def forcesync(ctx):
+    """Force sync slash commands with Discord."""
+    await bot.tree.sync()
+    await ctx.send("Slash commands have been synced!")
+
 
 # --- Run Bot ---
 bot.run(os.getenv("DISCORD_TOKEN"))
