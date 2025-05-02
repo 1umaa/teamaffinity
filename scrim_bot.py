@@ -1026,7 +1026,7 @@ def generate_preview_embed(user_id: int) -> discord.Embed:
         elif timezone_str == "BST":
             timezone_offset = 1
         elif timezone_str == "EST":
-            timezone_offset = -5
+            timezone_offset = -4
         elif timezone_str == "EDT":
             timezone_offset = -4
         elif timezone_str == "PST":
