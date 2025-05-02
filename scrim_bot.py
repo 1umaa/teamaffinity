@@ -53,7 +53,7 @@ SERVER_OPTIONS = ["Frankfurt", "London", "Amsterdam", "Paris", "Warsaw", "Stockh
                   "Texas", "Oregon", "California"]
 
 # Format options
-FORMAT_OPTIONS = ["1 Game MR24", "2 Games MR24", "Best of 1", "Best of 3", "Best of 5"]
+FORMAT_OPTIONS = ["1 Game", "2 Games", "1 Game MR24", "2 Games MR24", "Best of 1", "Best of 3", "Best of 5"]
 
 # Temporary storage (in real projects you'd use a DB)
 scrim_data: Dict[int, Dict[str, Union[str, List[str]]]] = {}
