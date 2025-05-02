@@ -182,15 +182,15 @@ class AbsenceDetailsModal(discord.ui.Modal):
         self.absence_type = absence_type
         super().__init__(title=f"{absence_type['label']} Details")
 
-        # Create the form fields
+        # Create the form fields with updated format
         self.start_date = discord.ui.TextInput(
-            label="Start Date (YYYY-MM-DD)",
-            placeholder="e.g., 2025-05-10",
+            label="Start Date (DD/MM/YYYY)",
+            placeholder="e.g., 10/05/2025",
             required=True
         )
         self.end_date = discord.ui.TextInput(
-            label="End Date (YYYY-MM-DD)",
-            placeholder="e.g., 2025-05-15",
+            label="End Date (DD/MM/YYYY)",
+            placeholder="e.g., 15/05/2025",
             required=True
         )
         self.team = discord.ui.TextInput(
@@ -220,10 +220,10 @@ class AbsenceDetailsModal(discord.ui.Modal):
         team = self.team.value
         reason = self.reason.value
 
-        # Validate dates
+        # Validate dates with new format
         if not is_valid_date(start_date) or not is_valid_date(end_date):
             await interaction.response.send_message(
-                "Invalid date format. Please use YYYY-MM-DD.",
+                "Invalid date format. Please use DD/MM/YYYY.",
                 ephemeral=True
             )
             return
@@ -236,12 +236,12 @@ class AbsenceDetailsModal(discord.ui.Modal):
             )
             return
 
-        # Create confirmation embed
+        # Create confirmation embed with modified inline settings
         confirm_embed = discord.Embed(
             title="Absence Submitted",
             color=discord.Color.green()
         )
-        confirm_embed.add_field(name="Type", value=self.absence_type["label"], inline=True)
+        confirm_embed.add_field(name="Type", value=self.absence_type["label"], inline=False)
         confirm_embed.add_field(name="Start Date", value=start_date, inline=True)
         confirm_embed.add_field(name="End Date", value=end_date, inline=True)
         confirm_embed.add_field(name="Team", value=team, inline=False)
@@ -266,13 +266,17 @@ class AbsenceDetailsModal(discord.ui.Modal):
             reason
         )
 
+        # Convert date format for Google Calendar (needs YYYY-MM-DD)
+        calendar_start_date = convert_date_format(start_date)
+        calendar_end_date = convert_date_format(end_date)
+
         # Add to Google Calendar
         try:
             calendar_link = await add_to_google_calendar(
                 player_name=interaction.user.display_name,
                 absence_type=self.absence_type["label"],
-                start_date=start_date,
-                end_date=end_date,
+                start_date=calendar_start_date,
+                end_date=calendar_end_date,
                 reason=reason,
                 team=team
             )
@@ -306,13 +310,13 @@ class AbsenceDetailsModal(discord.ui.Modal):
         # Get team role ID
         team_role_id = ABSENCE_TEAM_STRUCTURE[team]["team_role_id"]
 
-        # Create notification embed
+        # Create notification embed with modified inline settings
         notification_embed = discord.Embed(
             title="New Absence Notification",
             color=discord.Color.orange()
         )
-        notification_embed.add_field(name="Player", value=user.mention, inline=True)
-        notification_embed.add_field(name="Type", value=absence_type, inline=True)
+        notification_embed.add_field(name="Player", value=user.mention, inline=False)
+        notification_embed.add_field(name="Type", value=absence_type, inline=False)
         notification_embed.add_field(name="Start Date", value=start_date, inline=True)
         notification_embed.add_field(name="End Date", value=end_date, inline=True)
         notification_embed.add_field(name="Team", value=team, inline=False)
@@ -327,19 +331,26 @@ class AbsenceDetailsModal(discord.ui.Modal):
 
 # ----- ABSENCE MANAGEMENT FUNCTIONS -----
 
-# Function to validate date format (YYYY-MM-DD)
+# Function to validate date format (DD/MM/YYYY)
 def is_valid_date(date_string: str) -> bool:
     """Validate if the string is a correctly formatted date."""
-    # Check format with regex
-    if not re.match(r"^\d{4}-\d{2}-\d{2}$", date_string):
+    # Check format with regex for DD/MM/YYYY
+    if not re.match(r"^\d{2}/\d{2}/\d{4}$", date_string):
         return False
 
     # Check if it's a valid date
     try:
-        datetime.datetime.strptime(date_string, "%Y-%m-%d")
+        datetime.datetime.strptime(date_string, "%d/%m/%Y")
         return True
     except ValueError:
         return False
+
+
+# Function to convert from DD/MM/YYYY to YYYY-MM-DD (for Google Calendar)
+def convert_date_format(date_string: str) -> str:
+    """Convert from DD/MM/YYYY to YYYY-MM-DD format."""
+    day, month, year = date_string.split('/')
+    return f"{year}-{month}-{day}"
 
 
 async def add_to_google_calendar(
@@ -675,15 +686,15 @@ class TeamSelectionView(discord.ui.View):
             del scrim_data[self.user_id]
 
 
-# Date and Time Modal with Timezone
+# Date and Time Modal with Timezone - Updated to use DD/MM/YYYY format with slashes
 class ScrimDateTimeModal(discord.ui.Modal, title="Scrim Date and Time"):
     def __init__(self, user_id: int):
         super().__init__()
         self.user_id = user_id
 
     date_input = discord.ui.TextInput(
-        label="Date (DD-MM-YYYY)",
-        placeholder="e.g., 30-04-2025",
+        label="Date (DD/MM/YYYY)",
+        placeholder="e.g., 30/04/2025",
         required=True,
         min_length=10,
         max_length=10
@@ -715,9 +726,9 @@ class ScrimDateTimeModal(discord.ui.Modal, title="Scrim Date and Time"):
             # Store the timezone information
             scrim_data[self.user_id]["timezone"] = timezone_str
 
-            # Parse the input date and time as is (without timezone info first)
+            # Parse the input date and time with new format
             date_time_str = f"{date_str} {time_str}"
-            naive_date_time_obj = datetime.datetime.strptime(date_time_str, "%d-%m-%Y %H:%M")
+            naive_date_time_obj = datetime.datetime.strptime(date_time_str, "%d/%m/%Y %H:%M")
 
             # Store in scrim data for later use
             scrim_data[self.user_id]["date"] = date_str
@@ -732,7 +743,7 @@ class ScrimDateTimeModal(discord.ui.Modal, title="Scrim Date and Time"):
             )
         except ValueError:
             await interaction.response.send_message(
-                "❌ Invalid date or time format. Please use DD-MM-YYYY for date and HH:MM for time.",
+                "❌ Invalid date or time format. Please use DD/MM/YYYY for date and HH:MM for time.",
                 ephemeral=True
             )
 
@@ -782,7 +793,6 @@ class OpponentDetailsModal(discord.ui.Modal, title="Opponent Details"):
             ephemeral=True
         )
 
-
 # Format Selection View
 class FormatSelectionView(discord.ui.View):
     def __init__(self, user_id: int):
@@ -795,7 +805,6 @@ class FormatSelectionView(discord.ui.View):
     async def on_timeout(self):
         if self.user_id in scrim_data:
             del scrim_data[self.user_id]
-
 
 # Format Selector Dropdown
 class FormatSelector(discord.ui.Select):
@@ -826,9 +835,7 @@ class FormatSelector(discord.ui.Select):
             ephemeral=True
         )
 
-    # Maps Selection View
-
-
+# Maps Selection View
 class MapSelectionView(discord.ui.View):
     def __init__(self, user_id: int):
         super().__init__(timeout=300)
@@ -842,9 +849,7 @@ class MapSelectionView(discord.ui.View):
         if self.user_id in scrim_data:
             del scrim_data[self.user_id]
 
-    # Maps Selector Dropdown
-
-
+# Maps Selector Dropdown
 class MapSelector(discord.ui.Select):
     def __init__(self, user_id: int, max_maps: int):
         self.user_id = user_id
@@ -873,9 +878,7 @@ class MapSelector(discord.ui.Select):
             ephemeral=True
         )
 
-    # Server Selection View
-
-
+# Server Selection View
 class ServerSelectionView(discord.ui.View):
     def __init__(self, user_id: int):
         super().__init__(timeout=300)
@@ -888,9 +891,7 @@ class ServerSelectionView(discord.ui.View):
         if self.user_id in scrim_data:
             del scrim_data[self.user_id]
 
-    # Server Selector Dropdown
-
-
+# Server Selector Dropdown
 class ServerSelector(discord.ui.Select):
     def __init__(self, user_id: int):
         self.user_id = user_id
@@ -919,9 +920,7 @@ class ServerSelector(discord.ui.Select):
             ephemeral=True
         )
 
-    # Player Selection View
-
-
+# Player Selection View
 class PlayerSelectionView(discord.ui.View):
     def __init__(self, user_id: int):
         super().__init__(timeout=300)
@@ -935,9 +934,7 @@ class PlayerSelectionView(discord.ui.View):
         if self.user_id in scrim_data:
             del scrim_data[self.user_id]
 
-    # Player Selection Modal
-
-
+# Player Selection Modal
 class PlayerSelectionModal(discord.ui.Modal, title="Player Selection"):
     def __init__(self, user_id: int):
         super().__init__()
@@ -965,9 +962,7 @@ class PlayerSelectionModal(discord.ui.Modal, title="Player Selection"):
             ephemeral=True
         )
 
-    # Confirmation View
-
-
+# Confirmation View
 class ConfirmationView(discord.ui.View):
     def __init__(self, user_id: int):
         super().__init__(timeout=300)
@@ -998,9 +993,7 @@ class ConfirmationView(discord.ui.View):
         if self.user_id in scrim_data:
             del scrim_data[self.user_id]
 
-    # Modified generate_preview_embed function with timezone handling
-
-
+# Modified generate_preview_embed function with timezone handling
 def generate_preview_embed(user_id: int) -> discord.Embed:
     data = scrim_data[user_id]
     team = data["team"]
@@ -1091,9 +1084,7 @@ def generate_preview_embed(user_id: int) -> discord.Embed:
 
     return embed
 
-    # Send scrim announcement to the proper channel
-
-
+# Send scrim announcement to the proper channel
 async def send_scrim_announcement(user_id: int, interaction: discord.Interaction) -> None:
     data = scrim_data[user_id]
     team = data["team"]
@@ -1124,8 +1115,8 @@ async def send_scrim_announcement(user_id: int, interaction: discord.Interaction
     # Include role ping in the message content with a two-line format
     # First line has the role mention, second line has the message
     content = (f"# <@&{role_id}>\n"
-               f"\n"
-               f"Please review the below and reach out to your Team Captain if you won't be available, so that we can find a substitute")
+                f"\n"
+                f"Please review the below and reach out to your Team Captain if you won't be available, so that we can find a substitute")
 
     # Send the announcement
     await channel.send(content=content, embed=embed)
@@ -1145,11 +1136,9 @@ async def send_scrim_announcement(user_id: int, interaction: discord.Interaction
     # Clean up user data
     del scrim_data[user_id]
 
-    # ----- SETUP FUNCTIONS AND EXTENSIONS -----
+# ----- SETUP FUNCTIONS AND EXTENSIONS -----
 
-    # Ready Event
-
-
+# Ready Event
 @bot.event
 async def on_ready():
     try:
@@ -1196,7 +1185,6 @@ async def on_ready():
     except Exception as e:
         print(f"Error during startup: {e}")
 
-
 # Command to force sync all slash commands - useful for troubleshooting
 @bot.command(name="forcesync")
 @commands.is_owner()
@@ -1204,7 +1192,6 @@ async def forcesync(ctx):
     """Force sync slash commands with Discord."""
     await bot.tree.sync()
     await ctx.send("Slash commands have been synced!")
-
 
 # --- Run Bot ---
 bot.run(os.getenv("DISCORD_TOKEN"))
