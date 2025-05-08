@@ -1,6 +1,6 @@
-discord.py>=2.0.0
-google-api-python-client
-google-auth
-google-auth-oauthlib
-google-auth-httplib2
+discord.py==2.3.0
 aiosqlite==0.17.0
+google-api-python-client==2.78.0
+google-auth==2.16.0
+google-auth-oauthlib==1.0.0
+python-dotenv==1.0.0
