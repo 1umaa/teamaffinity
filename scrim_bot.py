@@ -240,7 +240,7 @@ class DatabaseManager:
         return row[0] if row else None
 
 # Initialize the database manager
-db_manager = DatabaseManager()
+db_manager = DatabaseManager(db_path="/app/data/bot_data.db")
 
 # Cached channel and role references
 channel_cache = {}
