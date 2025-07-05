@@ -69,7 +69,7 @@ ABSENCE_MANAGEMENT_CHANNEL_ID = 1367628087130456135
 MANAGEMENT_ROLE_ID = 1354078173553365132  # Using the Manager role ID
 
 # Maps, servers, and format options
-MAP_OPTIONS = ["Abyss", "Ascent", "Bind", "Breeze", "Fracture", "Haven", "Icebox", "Lotus", "Pearl", "Split", "Sunset"]
+MAP_OPTIONS = ["Abyss", "Ascent", "Bind", "Breeze", "Corrode", "Fracture", "Haven", "Icebox", "Lotus", "Pearl", "Split", "Sunset"]
 SERVER_OPTIONS = ["Frankfurt", "London", "Amsterdam", "Paris", "Warsaw", "Stockholm", "Madrid", "Virginia", "Illinois", "Texas", "Oregon", "California"]
 FORMAT_OPTIONS = ["1 Game", "2 Games", "1 Game MR24", "2 Games MR24", "Best of 1", "Best of 3", "Best of 5"]
 
