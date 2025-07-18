@@ -37,7 +37,7 @@ TEAM_CONFIG = {
         "role_id": 1354084830140436611,
         "color": discord.Color(0x12d6df),  # #12d6df - EMEA Blue
     },
-    "Affinity Academy": {
+    "Affinity ACAD EMEA": {
         "channel_id": 1366431756164665496,
         "role_id": 1354085016778575934,
         "color": discord.Color(0xf70fff),  # #f70fff - ACAD Purple
@@ -50,8 +50,13 @@ TEAM_CONFIG = {
     "Affinity NA": {
         "channel_id": 1354508442135560323,
         "role_id": 1354085225600385044,
-        "color": discord.Color(0xcb0000)  # #cb0000 - NA Red
-    }
+        "color": discord.Color(0xcb0000),  # #cb0000 - NA Red
+    },
+    "Affinity ACAD NA": {
+        "channel_id": 1393908768802340906,
+        "role_id": 1393906573029408798,
+        "color": discord.Color(0xcaa422)  # #caa422 - ACAD Orange
+    },
 }
 
 # Role IDs that are allowed to schedule scrims
