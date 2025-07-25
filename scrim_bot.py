@@ -1332,50 +1332,42 @@ async def send_scrim_reminder(scrim: Dict[str, Any]):
 @bot.event
 async def on_ready():
     """Handle bot startup."""
-
     global reminder_loop_started
 
     try:
-        
         # Only start the reminder loop if it hasn't already started        
         if not reminder_loop_started:
-        bot.loop.create_task(reminder_check_loop())
-        reminder_loop_started = True
-        
-        # Initialize database
+            bot.loop.create_task(reminder_check_loop())
+            reminder_loop_started = True
+
+        # Initialize database and calendar
         await db_manager.initialize()
-        
-        # Initialize calendar manager
         await calendar_manager.initialize()
-        
+
         # Register persistent views
         bot.add_view(PersistentScrimButton())
         bot.add_view(PersistentAbsenceView())
-        
+
         # Pre-cache channels and roles
         for team_name, config in TEAM_CONFIG.items():
             channel_id = config.get("channel_id")
             role_id = config.get("role_id")
-            
+
             channel = bot.get_channel(channel_id)
             if channel:
                 channel_cache[channel_id] = channel
-            
-            # Guild needed to get roles
+
             for guild in bot.guilds:
                 role = guild.get_role(role_id)
                 if role:
                     role_cache[role_id] = role
                     break
-        
-        # Start reminder check loop
-        bot.loop.create_task(reminder_check_loop())
-        
+
         # Sync slash commands
         await bot.tree.sync()
-        
+
         logger.info(f"Bot ready! Logged in as {bot.user}")
-        
+
     except Exception as e:
         logger.error(f"Error during startup: {e}")
 
