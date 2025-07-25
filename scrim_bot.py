@@ -12,6 +12,8 @@ import logging
 import sqlite3
 import aiosqlite
 
+reminder_loop_started = False
+
 # --- Configure Logging ---
 logging.basicConfig(
     level=logging.INFO,
@@ -1330,7 +1332,16 @@ async def send_scrim_reminder(scrim: Dict[str, Any]):
 @bot.event
 async def on_ready():
     """Handle bot startup."""
+
+    global reminder_loop_started
+
     try:
+        
+        # Only start the reminder loop if it hasn't already started        
+        if not reminder_loop_started:
+        bot.loop.create_task(reminder_check_loop())
+        reminder_loop_started = True
+        
         # Initialize database
         await db_manager.initialize()
         
