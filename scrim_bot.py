@@ -1335,14 +1335,15 @@ async def on_ready():
     global reminder_loop_started
 
     try:
-        # Only start the reminder loop if it hasn't already started        
-        if not reminder_loop_started:
-            bot.loop.create_task(reminder_check_loop())
-            reminder_loop_started = True
 
         # Initialize database and calendar
         await db_manager.initialize()
         await calendar_manager.initialize()
+
+        # Only start the reminder loop if it hasn't already started        
+        if not reminder_loop_started:
+            bot.loop.create_task(reminder_check_loop())
+            reminder_loop_started = True
 
         # Register persistent views
         bot.add_view(PersistentScrimButton())
