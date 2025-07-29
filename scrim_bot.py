@@ -1354,7 +1354,7 @@ async def on_ready():
         bot.add_view(AnonymousReportButton())
 
         # Optional: send button message in interface channel on startup (only do this once or wrap with a flag)
-        await post_anon_button(bot, 987654321098765432)  # Replace with your interface channel ID
+        await post_anon_button(bot, 1399853992959283372)  # Replace with your interface channel ID
 
         # Pre-cache channels and roles
         for team_name, config in TEAM_CONFIG.items():
