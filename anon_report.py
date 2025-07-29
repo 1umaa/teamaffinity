@@ -1,6 +1,6 @@
 import discord
 
-REPORT_CHANNEL_ID = 123456789012345678  # replace with your staff-only channel ID
+REPORT_CHANNEL_ID = 1399853992959283372  # replace with your staff-only channel ID
 
 class ReportModal(discord.ui.Modal, title="Anonymous Report"):
     report = discord.ui.TextInput(
