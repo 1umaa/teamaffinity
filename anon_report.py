@@ -13,11 +13,11 @@ class ReportModal(discord.ui.Modal, title="Anonymous Report"):
     async def on_submit(self, interaction: discord.Interaction):
         report_channel = interaction.client.get_channel(REPORT_CHANNEL_ID)
         embed = discord.Embed(
-            title="📢 New Anonymous Report",
+            title="📢 New Report Recieved",
             description=self.report.value,
-            color=discord.Color.orange()
+            color=discord.Color.red()
         )
-        embed.set_footer(text="Submitted via Anonymous Report button")
+        embed.set_footer(text="Submitted via Anonymous Reporting")
         await report_channel.send(embed=embed)
         await interaction.response.send_message("✅ Your report has been sent anonymously.", ephemeral=True)
 
