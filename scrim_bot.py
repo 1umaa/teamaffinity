@@ -1,3 +1,4 @@
+from anon_report import AnonymousReportButton, post_anon_button
 import discord
 from discord.ext import commands
 import datetime
@@ -1335,7 +1336,6 @@ async def on_ready():
     global reminder_loop_started
 
     try:
-
         # Initialize database and calendar
         await db_manager.initialize()
         await calendar_manager.initialize()
@@ -1348,6 +1348,13 @@ async def on_ready():
         # Register persistent views
         bot.add_view(PersistentScrimButton())
         bot.add_view(PersistentAbsenceView())
+
+        # ✅ Add the persistent anonymous report button
+        from anon_report import AnonymousReportButton, post_anon_button
+        bot.add_view(AnonymousReportButton())
+
+        # Optional: send button message in interface channel on startup (only do this once or wrap with a flag)
+        await post_anon_button(bot, 987654321098765432)  # Replace with your interface channel ID
 
         # Pre-cache channels and roles
         for team_name, config in TEAM_CONFIG.items():
