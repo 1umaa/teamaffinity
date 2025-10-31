@@ -102,8 +102,8 @@ GCAL_COLOR_MAP = {
 # Timezone mapping for common timezone strings
 TIMEZONE_MAPPING = {
     "UTC": 0, "GMT": 0,
-    "CET": 1, "CEST": 2, "BST": 1,
-    "EST": -4, "EDT": -4, "PST": -8, "PDT": -7
+    "CET": 0, "CEST": 1, "BST": 0,
+    "EST": -3, "EDT": -3, "PST": -7, "PDT": -6
 }
 
 # --- Database Setup ---
@@ -1409,3 +1409,4 @@ def main():
         
 if __name__ == "__main__":
     main()
+
