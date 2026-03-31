@@ -92,8 +92,8 @@ GCAL_COLOR_MAP = {
 # Timezone mapping for common timezone strings
 TIMEZONE_MAPPING = {
     "UTC": 0, "GMT": 0,
-    "CET": 0, "CEST": 1, "BST": 0,
-    "EST": -5, "EDT": -5, "PST": -9, "PDT": -8
+    "CET": 1, "CEST": 2, "BST": 0,
+    "EST": -5, "EDT": -4, "PST": -8, "PDT": -7
 }
 
 # --- Database Setup ---
