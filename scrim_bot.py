@@ -48,7 +48,7 @@ TEAM_CONFIG = {
     "Affinity Nova": {
         "channel_id": 1477576860551483485,
         "role_id": 1469854446086393992,
-        "color": discord.Color(0xc8300ff),  # #8300ff - Nova Purple
+        "color": discord.Color(0x8300ff),  # #8300ff - Nova Purple
     },
 }
 
